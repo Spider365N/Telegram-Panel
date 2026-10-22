@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("API_ID", "12345")
 os.environ.setdefault("API_HASH", "demo_hash")
 os.environ.setdefault("BOT_TOKEN", "123456:DEMO")
-os.environ.setdefault("ADMIN_ID", "123456789")
+os.environ.setdefault("ADMIN_ID", "800000006")
 
 PASS = "\033[92m✔\033[0m"
 FAIL = "\033[91m✘\033[0m"
@@ -113,10 +113,10 @@ async def make_stack(mongo_uri: str | None, fresh: bool = False):
     force_sub = get_force_sub_service(settings)
 
     # Demo accounts: pretend the owner signed in 6 accounts.
-    channel = make_channel(3852827894, title="Demo Private Channel")
+    channel = make_channel(800000001, title="Demo Private Channel")
     clients = {
         f"phone{i+1}": FakeTelegramClient(f"phone{i+1}", user_id=900 + i,
-                                         channels={3852827894: channel})
+                                         channels={800000001: channel})
         for i in range(6)
     }
 
@@ -166,8 +166,8 @@ async def make_stack(mongo_uri: str | None, fresh: bool = False):
 async def demo(mongo_uri: str | None) -> None:
     from tests.fakes import FakeEvent, drain_executor
 
-    OWNER = int(os.getenv("ADMIN_ID", "123456789"))
-    USER = 555000111
+    OWNER = int(os.getenv("ADMIN_ID", "800000006"))
+    USER = 800000007
 
     stack = await make_stack(mongo_uri, fresh=True)
     router = stack["router"]
@@ -192,7 +192,7 @@ async def demo(mongo_uri: str | None) -> None:
     print("\n3) Channel added by an unknown actor (the production case)")
     # Telegram sometimes hides who added the bot to a channel. The channel must
     # still be registered, visible to the operator and claimable.
-    await stack["channels"].register(-1003852827894, None, title="Logs Test")
+    await stack["channels"].register(-100800000001, None, title="Logs Test")
     listing = FakeEvent(sender_id=OWNER, chat_id=OWNER, data="u:ch")
     await router.handle_callback(listing)
     check("Logs Test" in (listing.last_text or ""), "channel visible in the panel")
@@ -210,19 +210,19 @@ async def demo(mongo_uri: str | None) -> None:
         if data:
             claim = FakeEvent(sender_id=OWNER, chat_id=OWNER, data=data)
             await router.handle_callback(claim)
-            doc = await stack["channels"].get(-1003852827894)
+            doc = await stack["channels"].get(-100800000001)
             check(doc is not None and doc.get("owner_id") == OWNER,
                   "channel assigned to the operator")
 
     print("\n3b) Free auto reactions (only reactions are free)")
     # hand the channel to the normal demo user (the claim above went to the admin)
-    await stack["channels"].set_owner(-1003852827894, USER)
-    await stack["auto"].enable_free_plan(-1003852827894)
-    plan_info = await stack["auto"].enable_free_plan(-1003852827894)
+    await stack["channels"].set_owner(-100800000001, USER)
+    await stack["auto"].enable_free_plan(-100800000001)
+    plan_info = await stack["auto"].enable_free_plan(-100800000001)
     check(plan_info.get("reactions") == "on (free)", f"free plan started ({plan_info})")
     check("views" not in plan_info or plan_info.get("views") == "premium only",
           "auto views stay premium-only")
-    outcome = await stack["auto"].handle_new_post(-1003852827894, 1)
+    outcome = await stack["auto"].handle_new_post(-100800000001, 1)
     reactions = outcome.get("reactions", {})
     pool = len(stack["bot"].active_clients)
     check(min(8, pool) <= reactions.get("accounts", 0) <= min(10, pool),
@@ -247,26 +247,26 @@ async def demo(mongo_uri: str | None) -> None:
     # accounts are still OUTSIDE the channel. They must be joined through the
     # invite link the bot exported, and then react on every new post.
     for client in stack["bot"].active_clients.values():
-        client.member_of.discard(3852827894)
-        client.known_entities.discard(3852827894)
-    warm = await stack["auto"].warm_channel(-1003852827894)
+        client.member_of.discard(800000001)
+        client.known_entities.discard(800000001)
+    warm = await stack["auto"].warm_channel(-100800000001)
     check(warm.get("ok", 0) > 0, f"accounts joined through the bot's invite link ({warm})")
-    joined = [n for n, c in stack["bot"].active_clients.items() if 3852827894 in c.member_of]
+    joined = [n for n, c in stack["bot"].active_clients.items() if 800000001 in c.member_of]
     check(len(joined) == warm.get("ok"),
           f"membership recorded for all of them ({len(joined)})")
     for message_id in (7, 8, 9):
-        outcome = await stack["auto"].handle_new_post(-1003852827894, message_id)
+        outcome = await stack["auto"].handle_new_post(-100800000001, message_id)
         got = outcome["reactions"]
         check(got["ok"] > 0 and got["failed"] == 0,
               f"post {message_id}: {got['ok']} reactions, {got['failed']} failed")
-    doc = await stack["channels"].get(-1003852827894)
+    doc = await stack["channels"].get(-100800000001)
     check(bool(doc.get("invite_link")), "the invite link stays stored for later posts")
 
     print("\n4) Free reaction order from the panel (the bug from the crash log)")
     free = FakeEvent(sender_id=USER, chat_id=USER, data="u:free_react")
     await router.handle_callback(free)
     check("Free reactions" in free.last_text, "free plan screen shown")
-    link = FakeEvent(sender_id=USER, chat_id=USER, text="https://t.me/c/3852827894/22")
+    link = FakeEvent(sender_id=USER, chat_id=USER, text="https://t.me/c/800000001/22")
     await router.handle_message(link)
     await drain_executor(stack)
     orders = await stack["orders"].list_for_user(USER)
@@ -282,20 +282,20 @@ async def demo(mongo_uri: str | None) -> None:
     # Regression: a user orders reactions on a private channel before any post
     # ran, so no invite link was ever exported. The order must export one itself
     # (a *different* user, because the first one already used their free quota).
-    user2 = 918273645
-    await stack["store"].update_one("channels", {"_id": -1003852827894},
+    user2 = 800000008
+    await stack["store"].update_one("channels", {"_id": -100800000001},
                                     {"$unset": {"invite_link": ""}})
-    doc = await stack["channels"].get(-1003852827894)
+    doc = await stack["channels"].get(-100800000001)
     check(not doc.get("invite_link"), "invite link removed (fresh channel state)")
     for client in stack["bot"].active_clients.values():
-        client.member_of.discard(3852827894)
-        client.known_entities.discard(3852827894)
+        client.member_of.discard(800000001)
+        client.known_entities.discard(800000001)
         client.joined.clear()
     before = {o["_id"] for o in await stack["orders"].list_for_user(user2)}
     tap = FakeEvent(sender_id=user2, chat_id=user2, data="u:free_react")
     await router.handle_callback(tap)
     await router.handle_message(FakeEvent(sender_id=user2, chat_id=user2,
-                                          text="https://t.me/c/3852827894/31"))
+                                          text="https://t.me/c/800000001/31"))
     await drain_executor(stack)
     fresh_orders = [o for o in await stack["orders"].list_for_user(user2) if o["_id"] not in before]
     check(bool(fresh_orders), "a new free order was created for the second user")
@@ -307,10 +307,10 @@ async def demo(mongo_uri: str | None) -> None:
         check(result.get("ok", 0) > 0, f"reactions applied: {result.get('ok')}")
         check(not any("Could not resolve chat" in e for e in result.get("errors", [])),
               "no 'Could not resolve chat' error (the production failure)")
-    refreshed = await stack["channels"].get(-1003852827894)
+    refreshed = await stack["channels"].get(-100800000001)
     check(str(refreshed.get("invite_link") or "").endswith("fake3852827894"),
           f"a fresh invite link was exported and stored ({refreshed.get('invite_link')})")
-    joined = [n for n, c in stack["bot"].active_clients.items() if 3852827894 in c.member_of]
+    joined = [n for n, c in stack["bot"].active_clients.items() if 800000001 in c.member_of]
     check(bool(joined), f"accounts joined again through the new link ({len(joined)})")
 
     print("\n4c) Reaction emojis: Telegram's own set only")
@@ -323,7 +323,7 @@ async def demo(mongo_uri: str | None) -> None:
     check(await stack["settings"].emojis() == ["👍", "🔥"],
           f"unsupported emojis never reach the pool ({await stack['settings'].emojis()})")
     seen_before = {name: len(c.requests) for name, c in stack["bot"].active_clients.items()}
-    outcome = await stack["auto"].handle_new_post(-1003852827894, 51)
+    outcome = await stack["auto"].handle_new_post(-100800000001, 51)
     check(outcome["reactions"]["ok"] > 0 and outcome["reactions"]["failed"] == 0,
           f"post 51: {outcome['reactions']['ok']} reactions, {outcome['reactions']['failed']} failed")
     applied = [
@@ -336,18 +336,18 @@ async def demo(mongo_uri: str | None) -> None:
           f"only supported emojis were sent ({applied})")
 
     print("\n4d) One reaction run per post (no double reactions)")
-    again = await stack["auto"].handle_new_post(-1003852827894, 51)
+    again = await stack["auto"].handle_new_post(-100800000001, 51)
     check(again.get("skipped") == "post already handled",
           f"a repeated update is ignored ({again.get('skipped')})")
-    older = await stack["auto"].handle_new_post(-1003852827894, 50)
+    older = await stack["auto"].handle_new_post(-100800000001, 50)
     check(older.get("skipped") == "post already handled", "an older redelivered post is ignored")
-    later = await stack["auto"].handle_new_post(-1003852827894, 52)
+    later = await stack["auto"].handle_new_post(-100800000001, 52)
     check(later["reactions"]["ok"] > 0, f"a genuinely new post still reacts ({later['reactions']['ok']})")
 
     print("\n4e) A newly signed-in account joins the channels that already exist")
     from tests.fakes import FakeTelegramClient
     from src.peers import PeerResolver
-    internal = PeerResolver.to_internal_channel_id(-1003852827894)
+    internal = PeerResolver.to_internal_channel_id(-100800000001)
     newcomer = FakeTelegramClient("phone99", user_id=9999,
                                   channels={internal: stack["channel"]}, member_of=set())
     stack["bot"].active_clients["phone99"] = newcomer
@@ -356,25 +356,25 @@ async def demo(mongo_uri: str | None) -> None:
     check(newcomer.joined or internal in newcomer.member_of,
           f"the new account joined the existing channel ({warm})")
     check(warm.get("joined", 0) >= 1, f"membership(s) added for the pool ({warm.get('joined')})")
-    pool_outcome = await stack["auto"].handle_new_post(-1003852827894, 53)
+    pool_outcome = await stack["auto"].handle_new_post(-100800000001, 53)
     check(pool_outcome["reactions"]["accounts"] <= 10,
           f"the free tier still caps the pool at 10 ({pool_outcome['reactions']['accounts']})")
 
     print("\n4f) Bot removed → our accounts leave the channel")
     members_before = [n for n, c in stack["bot"].active_clients.items() if internal in c.member_of]
     check(len(members_before) > 1, f"accounts were inside before removal ({len(members_before)})")
-    left = await stack["auto"].leave_channel(-1003852827894)
+    left = await stack["auto"].leave_channel(-100800000001)
     check(left.get("left", 0) >= 1, f"accounts left the channel ({left.get('left')})")
     still_in = [n for n, c in stack["bot"].active_clients.items() if internal in c.member_of]
     check(not still_in, f"nobody is left inside ({still_in})")
-    check(await stack["channels"].get(-1003852827894) is None, "the channel record is gone")
+    check(await stack["channels"].get(-100800000001) is None, "the channel record is gone")
     notes = [m["text"] for m in stack["bot"].tbot.sent_messages
              if "removed from a channel" in m["text"]]
     check(bool(notes), "the owner was told that automation stopped")
     check(all(m.get("parse_mode") == "html" for m in stack["bot"].tbot.sent_messages),
           "every notification is sent as HTML (no literal </b> codes)")
     # put the channel back for the remaining steps
-    await stack["channels"].register(-1003852827894, USER, title="Logs Test",
+    await stack["channels"].register(-100800000001, USER, title="Logs Test",
                                      invite_link="https://t.me/+fake3852827894")
     for client in stack["bot"].active_clients.values():
         client.member_of.add(internal)
@@ -390,7 +390,7 @@ async def demo(mongo_uri: str | None) -> None:
     views = FakeEvent(sender_id=USER, chat_id=USER, data="u:buy_views:views_1k")
     await router.handle_callback(views)
     await router.handle_message(FakeEvent(sender_id=USER, chat_id=USER,
-                                          text="https://t.me/c/3852827894/22"))
+                                          text="https://t.me/c/800000001/22"))
     await drain_executor(stack)
     balance = await stack["users"].balance(USER)
     first = (await stack["orders"].list_for_user(USER))[0]
@@ -402,7 +402,7 @@ async def demo(mongo_uri: str | None) -> None:
     charged = FakeEvent(sender_id=USER, chat_id=USER, data="u:buy_views:views_1k")
     await router.handle_callback(charged)
     await router.handle_message(FakeEvent(sender_id=USER, chat_id=USER,
-                                          text="https://t.me/c/3852827894/23"))
+                                          text="https://t.me/c/800000001/23"))
     await drain_executor(stack)
     balance = await stack["users"].balance(USER)
     check(balance == 421, f"wallet charged correctly when the plan does not cover it ({balance})")
@@ -410,7 +410,7 @@ async def demo(mongo_uri: str | None) -> None:
 
     print("\n5c) Auto comments: random positive comments on every new post")
     await stack["users"].grant_plan(USER, kinds=["views", "comments"], days=30)
-    comments_channel = -1003852827894
+    comments_channel = -100800000001
     await stack["channels"].set_auto_comments(comments_channel, True, accounts=3)
     await stack["settings"].set_path("comments.auto.delay_min", 0)
     await stack["settings"].set_path("comments.auto.delay_max", 0)
@@ -429,27 +429,27 @@ async def demo(mongo_uri: str | None) -> None:
     print("\n5d) Auto views: enabled channel + plan = views on the next post")
     from tests.fakes import make_channel
     stranger = USER + 40
-    await stack["channels"].register(-1003852827895, stranger, title="Stranger Channel",
+    await stack["channels"].register(-100800000002, stranger, title="Stranger Channel",
                                      invite_link="https://t.me/+fake3852827895")
     for client in stack["bot"].active_clients.values():
-        client.channels[3852827895] = make_channel(3852827895, title="Stranger Channel")
-        client.member_of.add(3852827895)
-        client.known_entities.add(3852827895)
-    await stack["channels"].set_auto_views(-1003852827895, True)
+        client.channels[800000002] = make_channel(800000002, title="Stranger Channel")
+        client.member_of.add(800000002)
+        client.known_entities.add(800000002)
+    await stack["channels"].set_auto_views(-100800000002, True)
     await stack["settings"].set_path("views.auto.enabled", True)
-    without = await stack["auto"].handle_new_post(-1003852827895, 71)
+    without = await stack["auto"].handle_new_post(-100800000002, 71)
     check("views" not in without, "no views for a channel nobody has a plan for")
-    check((await stack["channels"].get(-1003852827895)).get("auto_views", {}).get("enabled") is True,
+    check((await stack["channels"].get(-100800000002)).get("auto_views", {}).get("enabled") is True,
           "the auto-views switch stays on (it used to be disabled permanently)")
     await stack["users"].grant_plan(stranger, kinds=["views"], days=30)
-    with_plan = await stack["auto"].handle_new_post(-1003852827895, 72)
+    with_plan = await stack["auto"].handle_new_post(-100800000002, 72)
     check(with_plan.get("views", {}).get("ok", 0) >= 1,
           f"views ran once the plan was granted ({with_plan.get('views')})")
 
     print("\n6) Top-up request → admin approval")
     await router.handle_callback(FakeEvent(sender_id=USER, chat_id=USER, data="u:topup"))
     await router.handle_message(FakeEvent(sender_id=USER, chat_id=USER, text="300"))
-    await router.handle_message(FakeEvent(sender_id=USER, chat_id=USER, text="123412341234"))
+    await router.handle_message(FakeEvent(sender_id=USER, chat_id=USER, text="800000009"))
     pending = await stack["payments"].pending_topups()
     check(bool(pending), "top-up request stored as pending")
     if pending:
@@ -496,17 +496,17 @@ async def demo(mongo_uri: str | None) -> None:
     check(restored > 0, f"{restored} accounts restored from the database")
 
     print("\n10b) Private-channel join + public channel without joining")
-    public = 700700001
+    public = 800000003
     from tests.fakes import FakeTelegramClient, make_channel as _make_channel
     pub_channel = _make_channel(public, username="demopublic")
     clients = stack["bot"].active_clients
     for name, client in clients.items():
         client.channels[public] = pub_channel
         client.known_entities.add(public)
-    await stack["channels"].register(-100700700001, USER, title="Demo Public",
+    await stack["channels"].register(-100800000003, USER, title="Demo Public",
                                      username="demopublic")
-    await stack["auto"].enable_free_plan(-100700700001)
-    pub_outcome = await stack["auto"].handle_new_post(-100700700001, 3)
+    await stack["auto"].enable_free_plan(-100800000003)
+    pub_outcome = await stack["auto"].handle_new_post(-100800000003, 3)
     check(pub_outcome.get("reactions", {}).get("ok", 0) > 0,
           f"public channel reacted without joining ({pub_outcome.get('reactions')})")
     check(all(not c.joined for c in clients.values()),
@@ -514,7 +514,7 @@ async def demo(mongo_uri: str | None) -> None:
 
     print("\n10c) Multi-user isolation")
     other = USER + 1
-    await stack["channels"].register(-100999999999, other, title="Other User Channel")
+    await stack["channels"].register(-100800000004, other, title="Other User Channel")
     other_event = FakeEvent(sender_id=other, chat_id=other, data="u:ch")
     await router.handle_callback(other_event)
     check("Other User Channel" in other_event.last_text, "owner sees their channel")
@@ -523,7 +523,7 @@ async def demo(mongo_uri: str | None) -> None:
     mine = FakeEvent(sender_id=USER, chat_id=USER, data="u:ch")
     await router.handle_callback(mine)
     check("Other User Channel" not in mine.last_text, "isolation holds both ways")
-    intruder = FakeEvent(sender_id=USER, chat_id=USER, data="u:ar_ch:-100999999999")
+    intruder = FakeEvent(sender_id=USER, chat_id=USER, data="u:ar_ch:-100800000004")
     await router.handle_callback(intruder)
     check(any(a["alert"] for a in intruder.answers), "cross-user channel access refused")
 
@@ -600,7 +600,7 @@ async def demo(mongo_uri: str | None) -> None:
     handler = AccountHandler(handler_tbot)
     handler.finalize_client_setup = AsyncMock()
     handler_tbot.handlers["temp_client"] = fake_client
-    handler_tbot.handlers["temp_phone"] = "+911234567890"
+    handler_tbot.handlers["temp_phone"] = "+15550000001"
     event = FakeEvent(sender_id=USER, chat_id=USER, text="00000")
     check(MAX_AUTH_ATTEMPTS == 3, "three attempts are configured")
     await handler.code_handler(event)
@@ -792,9 +792,9 @@ async def crash_write(mongo_uri: str) -> None:
     """Write state, then die hard (simulating a crash) without cleanup."""
     stack = await make_stack(mongo_uri, fresh=True)
     await stack["users"].credit(777001, 1000, "crash test")
-    await stack["channels"].register(-100777001, 777001, title="Crash Channel")
+    await stack["channels"].register(-100800000005, 777001, title="Crash Channel")
     docs = await stack["registry"].store.list_accounts()
-    print(f"{INFO} wrote user 777001, channel -100777001 and {len(docs)} accounts")
+    print(f"{INFO} wrote user 777001, channel -100800000005 and {len(docs)} accounts")
     print(f"{INFO} killing the process hard (exit code 9) — data must survive")
     sys.stdout.flush()
     os._exit(9)
@@ -809,7 +809,7 @@ async def crash_verify(mongo_uri: str) -> None:
 
     print("\nVerifying data written before the crash:")
     check(await users.balance(777001) == 1000, "wallet balance survived")
-    channel = await channels.get(-100777001)
+    channel = await channels.get(-100800000005)
     check(channel is not None, "channel registration survived")
     docs = await accounts.list_accounts()
     check(bool(docs) and all(d.get("session_string") for d in docs),

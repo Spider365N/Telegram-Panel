@@ -48,15 +48,16 @@ Telegram-Panel/
 ├── logs/                     # Log files
 │   └── bot.log              # Application logs
 ├── main.py                   # Application entry point
-├── requirements.txt          # Python dependencies
-├── env.example              # Environment variables template
-├── config.json              # Runtime configuration
-├── clients.json             # Client session data
-├── install.sh               # Installation script
-├── README.md                # Main project documentation
-├── CONTRIBUTING.md          # Contribution guidelines
-├── CHANGELOG.md             # Version history
-└── LICENSE                  # License file
+├── requirements.txt          # Pinned runtime dependencies
+├── requirements-dev.txt      # Offline test/developer dependencies
+├── config.example.json       # Safe JSON deployment template (no credentials)
+├── env.example               # Legacy environment-variable template
+├── Dockerfile                # Hardened application image
+├── docker-compose.yml        # VPS bot + MongoDB deployment on port 8070
+├── docker-entrypoint.sh      # Config copy, volume ownership, privilege drop
+├── README.md                 # Main project documentation
+├── CHANGELOG.md              # Version history
+└── LICENSE                   # License file
 ```
 
 ## Core Components
@@ -220,18 +221,14 @@ General utility functions.
 
 ## Configuration Files
 
+### config.example.json / config/config.json
+The tracked example contains placeholders only. For the recommended VPS deployment, copy it to the ignored, private `config/config.json` file and fill in Telegram/admin credentials. Docker Compose mounts that file read-only; the container copies it into `/run` at startup.
+
 ### env.example
-Template for environment variables. Copy to `.env` and fill in values.
+Legacy environment-variable template for manual/Railway deployments. The recommended VPS Compose workflow does not require `.env`.
 
-### config.json
-Runtime configuration storing:
-- Target groups for monitoring
-- Keywords for filtering
-- Ignore user list
-- Client configurations
-
-### clients.json
-Client session data and account information.
+### clients.json and Telethon sessions
+Legacy client-state JSON is written under `CLIENTS_JSON_PATH` (the Compose value is `/app/data/clients.json`). Telethon `.session` files are stored under `DATA_DIR/sessions` (Compose uses `/app/data/sessions`). The database/session/data paths are persisted by named Docker volumes.
 
 ## Test Structure
 
@@ -286,8 +283,4 @@ Tests are organized by category:
 
 ## Session Files
 
-Session files are stored in the project root with format:
-- `{phone_number}.session` for user accounts
-- `bot2.session` for bot session
-
-Session files contain authentication data and should never be committed to version control.
+Session files live below `DATA_DIR/sessions` (for example `/app/data/sessions` in Docker), with sanitized account names such as `{phone_number}.session`; the bot session defaults to `bot2.session`. Existing root-level session files are migrated into the persistent directory the first time the account is opened. Session files contain authentication data and must never be committed or shared.

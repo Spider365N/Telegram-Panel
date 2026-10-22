@@ -45,12 +45,12 @@
 
 ---
 
-## 0c. v3.3 — naye log (`logs.1792174308515.json`) ke saare issue fix
+## 0c. v3.3 — naye log (`logs.800000002.json`) ke saare issue fix
 
 | # | Aap ka point | Kya hua tha | Ab kya hai | Status |
 |---|--------------|-------------|------------|:------:|
 | 1 | **OTP / 2-step password galat → pura process restart** | Ek hi galat code par client close, state wipe, dobara `/start` | Wahi client + phone rakhta hai, **3 attempts** (code aur password dono), har message me bache attempts + expiry/restart par naya code bina attempt kharch kiye | ✅ |
-| 2 | **6 accounts signed in, reaction sirf 5 se** | `17209738889` par **sqlite lock** (`database is locked`) → update loop crash → client chup-chaap pool se gaya | Do client ek hi `.session` file par = asli wajah. Ab same phone dobara sign-in par **wahi client reuse**, purana client pehle disconnect; pool supervisor har 60s me toota client **khud reconnect** karta hai | ✅ |
+| 2 | **6 accounts signed in, reaction sirf 5 se** | `800000003` par **sqlite lock** (`database is locked`) → update loop crash → client chup-chaap pool se gaya | Do client ek hi `.session` file par = asli wajah. Ab same phone dobara sign-in par **wahi client reuse**, purana client pehle disconnect; pool supervisor har 60s me toota client **khud reconnect** karta hai | ✅ |
 | 3 | **God mode admin/owner** | — | Admin/owner ke liye har feature unlocked, koi payment/limit nahi (panel me bhi 👑 banner, order hamesha ₹0, `paid_with="owner"`) | ✅ |
 | 4 | **Error par auto-logout nahi** | connection error / sqlite lock / invalid peer par account "inactive" | Sirf **ban/block/revoked** par logout. Baaki sab (disconnect, timeout, sqlite lock, invalid peer) par account pool me rehta hai aur khud recover karta hai | ✅ |
 | 5 | **Auto-join message chat me nahi** | join hone par channel me message | Ab sirf **log** me (`Auto-join finished …`), chat bilkul clean | ✅ |
@@ -70,7 +70,7 @@
 | `Could not send notification to <user>: An invalid Peer was used` | unreachable user ek baar yaad rakha jata hai, har message par dobara try/log nahi |
 | `join failed … Could not resolve chat` | invite link refresh + account-side cache, aur pehle jaisa hard failure nahi |
 | `Added-by was hidden; attributing the channel to its creator X` | ye sirf ek **guess** hai — asli adder mile to channel khud re-attribute ho jata hai |
-| `Plan granted to 8707101133: … 365d` par channel `7938842751` ke naam | channel owner/added_by/sponsor sab entitlement candidates hain + `set_owner` handover par entitlement saath chalti hai |
+| `Plan granted to 800000004: … 365d` par channel `800000005` ke naam | channel owner/added_by/sponsor sab entitlement candidates hain + `set_owner` handover par entitlement saath chalti hai |
 
 ---
 
@@ -190,7 +190,7 @@
 
 | # | Kaam | Status |
 |---|------|:------:|
-| 1 | Production crash fix — `Could not find the input entity for PeerChannel(channel_id=3852827894)` | ✅ |
+| 1 | Production crash fix — `Could not find the input entity for PeerChannel(channel_id=800000006)` | ✅ |
 | 2 | Signed-in accounts **MongoDB** mein save (crash/restart par kuch nahi jaata) | ✅ |
 | 3 | **User panel** (aapke image-1 jaisa) + **Admin panel** | ✅ |
 | 4 | **Add To Channel / Add To Group** buttons (image-2 + permissions flow) | ✅ |
@@ -261,7 +261,7 @@ Crash proof bhi test kiya gaya:
 
 ```
 $ python scripts/live_check.py crash-write  --mongo mongodb://127.0.0.1:27017
-  ℹ wrote user 777001, channel -100777001 and 6 accounts
+  ℹ wrote user 777001, channel -100800000001 and 6 accounts
   ℹ killing the process hard (exit code 9) — data must survive
 
 $ python scripts/live_check.py crash-verify --mongo mongodb://127.0.0.1:27017

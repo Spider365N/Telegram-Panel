@@ -1,19 +1,8 @@
-# VPS / any Docker host: the bot + a private MongoDB instance in one command.
-#
-#   1. cp env.example .env    and fill in API_ID / API_HASH / BOT_TOKEN / ADMIN_ID
-#   2. docker compose up -d --build
-#   3. docker compose logs -f bot
-#
-# MONGODB_URI is wired to the bundled database, so every signed-in account,
-# wallet, order and channel survives restarts and container rebuilds.
-#
-# (Railway users: deploy the same repo with the Dockerfile + the MongoDB plugin
-#  template instead of this file — see the "Deploy on Railway" section of the README.)
 services:
   mongo:
     image: mongo:7.0
     restart: unless-stopped
-    command: ["--bind_ip_all", "--quiet"]
+    command: ["mongod", "--bind_ip_all", "--quiet", "--wiredTigerCacheSizeGB=2"]
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -22,32 +11,80 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+    cpus: 0.75
+    mem_limit: 4g
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-panel:3.5.1
     restart: unless-stopped
-    env_file: .env
-    environment:
-      MONGODB_URI: mongodb://mongo:27017
-      MONGODB_DB: telegram_panel
-      STORAGE_BACKEND: auto
-      DATA_DIR: /app/data
-      HEALTH_PORT: "8080"
+    init: true
+    stop_grace_period: 45s
     depends_on:
       mongo:
         condition: service_healthy
+    environment:
+      CONFIG_SOURCE_FILE: /config/config.json
+      # Non-secret Docker wiring; Telegram/admin credentials stay in the JSON file.
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: telegram_panel
+      STORAGE_BACKEND: mongo
+      DATA_DIR: /app/data
+      CLIENTS_JSON_PATH: /app/data/clients.json
+      HEALTH_PORT: "8070"
+      HEALTH_HOST: 0.0.0.0
+      PYTHONUNBUFFERED: "1"
     volumes:
+      - ./config:/config:ro
       - bot_data:/app/data
       - bot_logs:/app/logs
-    # Local status endpoint — open http://<vps-ip>:8080/health
+    # The panel is local-only by default. Reach it with an SSH tunnel, or put
+    # HTTPS + an IP allow-list in front of it before exposing it to the Internet.
+    ports:
+      - "127.0.0.1:8070:8070"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).status==200 else 1)\""]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8070/health', timeout=5)"
       interval: 60s
       timeout: 10s
-      start_period: 60s
       retries: 3
-    ports:
-      - "8080:8080"
+      start_period: 180s
+    # App code/config are immutable inside the container; only named data/log
+    # volumes and ephemeral tmpfs paths are writable.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+      - /run:rw,noexec,nosuid,size=16m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The root entrypoint needs only these to repair old named-volume ownership
+    # and drop to the unprivileged telegram user before running Python.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    cpus: 3.25
+    mem_limit: 8g
+    pids_limit: 1024
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 volumes:
   mongo_data:

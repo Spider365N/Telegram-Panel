@@ -15,7 +15,7 @@ Comprehensive guide for using Telegram Panel.
 
 1. Click "Account Management" from main menu
 2. Select "Add Account"
-3. Enter phone number in international format (e.g., +1234567890)
+3. Enter phone number in international format (e.g., +15550000004)
 4. Enter verification code received via Telegram
 5. If 2FA is enabled, enter password when prompted
 6. Account will be automatically saved and activated
@@ -143,7 +143,7 @@ Monitor mode enables automatic message filtering and forwarding based on keyword
 
 ### Setting Up Monitoring
 
-1. Configure CHANNEL_ID in `.env` file
+1. Set `CHANNEL_ID` in `config/config.json` (VPS/Docker) or in the environment for a legacy/manual install
 2. Select "Monitor Mode" from main menu
 3. Add keywords to monitor
 4. Configure target groups if needed
@@ -210,8 +210,8 @@ t.me/username/123
 
 ### Private Channels/Groups
 ```
-https://t.me/c/1234567890/123
-t.me/c/1234567890/123
+https://t.me/c/15550000004/123
+t.me/c/15550000004/123
 ```
 
 ### Direct Entity References

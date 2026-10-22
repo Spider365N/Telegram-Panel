@@ -37,7 +37,7 @@ const DATA = {
     locked: false}]},
   orders: {orders: [{_id: "o1", user_id: 7, kind: "views", status: "pending",
     price: 10, paid_with: "wallet", created_at: "2026-10-17"}]},
-  pool: {accounts: [{_id: "tg_69741", phone: "+919791234567", name: "Kaka Kaka",
+  pool: {accounts: [{_id: "tg_69741", phone: "+15550000003", name: "Kaka Kaka",
     status: "active", reactions_done: 28, views_done: 15, last_seen: "2026-10-17"}],
     live: 1, total: 1},
   operators: {operators: [{user_id: 9001, role: "owner", added_at: "env"},

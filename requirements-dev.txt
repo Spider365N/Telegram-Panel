@@ -1,0 +1,7 @@
+# Install after requirements.txt to run the repository's offline test suite.
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+dockerfile-parse==2.0.1
+PyYAML==6.0.3

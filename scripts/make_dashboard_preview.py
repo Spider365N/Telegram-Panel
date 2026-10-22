@@ -29,32 +29,32 @@ DATA = {
         "version": "3.5.0", "storage": "Mongo", "uptime": 8640, "users": 42,
         "orders": 7, "active_orders": 2, "revenue": 1500, "accounts_live": 5,
         "accounts_total": 6, "channels": 3, "requests": 1, "topups": 0,
-        "operators": [{"user_id": 8707101133, "role": "owner"}],
+        "operators": [{"user_id": 800000004, "role": "owner"}],
         "recent_orders": [
-            {"_id": "66f1a2b3c4d5e6f708192a3b", "user_id": 6151748243, "kind": "reactions",
+            {"_id": "66f1a2b3c4d5e6f708192a3b", "user_id": 800000005, "kind": "reactions",
              "status": "completed", "price": 10, "created_at": "2026-10-17 11:04"},
-            {"_id": "66f1a2b3c4d5e6f708192a3c", "user_id": 6974168540, "kind": "views",
+            {"_id": "66f1a2b3c4d5e6f708192a3c", "user_id": 800000006, "kind": "views",
              "status": "pending", "price": 25, "created_at": "2026-10-17 11:52"},
         ],
         "recent_users": [
-            {"_id": 6151748243, "first_name": "DEMON KING !!", "balance": 500,
+            {"_id": 800000005, "first_name": "Sample User", "balance": 500,
              "created_at": "2026-10-15"},
-            {"_id": 6974168540, "first_name": "Kaka Kaka", "balance": 0,
+            {"_id": 800000006, "first_name": "Sample User", "balance": 0,
              "created_at": "2026-10-16"},
         ],
     },
     "requests": {"requests": [
-        {"_id": "66f1aa", "user_id": 6151748243, "title": "Premium", "price": 199,
+        {"_id": "66f1aa", "user_id": 800000005, "title": "Premium", "price": 199,
          "days": 30, "channels": 5, "accounts": 15, "status": "pending",
          "created_at": "2026-10-17"},
     ]},
     "users": {"users": [
-        {"_id": 6151748243, "first_name": "DEMON KING !!", "balance": 500, "banned": False,
+        {"_id": 800000005, "first_name": "Sample User", "balance": 500, "banned": False,
          "plan": {"type": "premium", "kinds": ["reactions", "views"],
                   "expires_at": "2027-01-18"}},
-        {"_id": 6974168540, "first_name": "Kaka Kaka", "balance": 0, "banned": False,
+        {"_id": 800000006, "first_name": "Sample User", "balance": 0, "banned": False,
          "plan": {}},
-        {"_id": 8707101133, "first_name": "UnEven", "balance": 341.4, "banned": True,
+        {"_id": 800000004, "first_name": "Sample User", "balance": 341.4, "banned": True,
          "plan": {"type": "premium", "kinds": ["all"], "expires_at": "2027-01-17"}},
     ]},
     "plans": {"plans": [{"id": "premium", "title": "Premium", "days": 30, "price": 199,
@@ -62,31 +62,31 @@ DATA = {
                          "badge": "", "description": ""}]},
     "pricing": {"sections": {"reactions": {"free_account_limit": 8}}},
     "channels": {"channels": [
-        {"_id": "-1004312382560", "title": "Test User Channel #1", "owner_id": 6974168540,
+        {"_id": "-100800000001", "title": "Test User Channel #1", "owner_id": 800000006,
          "auto_reactions": {"enabled": True}, "auto_views": {"enabled": False},
          "locked": False},
-        {"_id": "-1003876718689", "title": "Promo", "owner_id": 7938842751,
+        {"_id": "-100800000002", "title": "Promo", "owner_id": 800000007,
          "auto_reactions": {"enabled": True}, "auto_views": {"enabled": False},
          "locked": True},
     ]},
     "orders": {"orders": [
-        {"_id": "66f1a2b3c4d5e6f708192a3b", "user_id": 6151748243, "kind": "reactions",
+        {"_id": "66f1a2b3c4d5e6f708192a3b", "user_id": 800000005, "kind": "reactions",
          "status": "pending", "price": 10, "paid_with": "wallet",
          "created_at": "2026-10-17"},
     ]},
     "pool": {"live": 6, "total": 6, "accounts": [
-        {"_id": "tg_6974168540", "phone": "+919791234567", "name": "Kaka Kaka",
+        {"_id": "tg_test_account", "phone": "+15550000002", "name": "Sample Account",
          "status": "active", "reactions_done": 28, "views_done": 15,
          "last_seen": "2026-10-17"},
-        {"_id": "tg_8481611674", "phone": "+917209738889", "name": "Golu Golu",
+        {"_id": "tg_test_account", "phone": "+15550000002", "name": "Sample Account",
          "status": "active", "reactions_done": 8, "views_done": 6,
          "last_seen": "2026-10-17"},
     ]},
     "operators": {"operators": [
-        {"user_id": 8707101133, "role": "owner", "added_at": "env"},
+        {"user_id": 800000004, "role": "owner", "added_at": "env"},
     ]},
     "force_sub": {"enabled": True, "channels": [
-        {"id": "-1001234567890", "title": "Updates", "username": "mychannel",
+        {"id": "-100800000003", "title": "Updates", "username": "example_user",
          "invite": None, "enabled": True},
     ]},
     "settings": {"settings": {"reactions": {}, "channels": {}}},
@@ -112,7 +112,7 @@ def prelude() -> str:
     const path = String(url).replace("/admin/api/", "");
     let data = {ok: true};
     if (path.startsWith("me")) {
-      data = {ok: true, user_id: 8707101133, role: "owner", version: "3.5.0"};
+      data = {ok: true, user_id: 800000004, role: "owner", version: "3.5.0"};
     } else {
       const key = ROUTES.find((r) => path.startsWith(r) && r !== "me");
       data = Object.assign({ok: true}, key ? window.__DATA[key] : {});
@@ -129,7 +129,7 @@ def inner_page(css: str, js: str) -> str:
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<style>{css}</style></head><body>"
         "<header><div class='brand'>TELEGRAM PANEL</div>"
-        "<div class='meta'><span id='who'>operator 8707101133</span>"
+        "<div class='meta'><span id='who'>operator sample</span>"
         "<span id='live-state' class='badge live'>live</span>"
         "<span id='updated'></span>"
         "<button id='auto' class='b sm'>live</button>"
@@ -209,7 +209,7 @@ __CSS__
     <div class="pane desk"><h2>desktop &middot; 1120 px</h2>
       <div class="frame" id="deskFrame">
         <header><div class="brand">&#9672;&#9672; TELEGRAM PANEL</div>
-          <div class="meta"><span id="who">operator 8707101133 &middot; owner</span>
+          <div class="meta"><span id="who">operator sample &middot; owner</span>
             <span id="live-state" class="badge live">&#9679; live</span>
             <span id="updated"></span>
             <button id="auto" class="b sm">live</button>

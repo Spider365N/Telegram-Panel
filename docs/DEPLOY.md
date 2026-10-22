@@ -1,309 +1,65 @@
-# 🚀 Deploy Guide — VPS & Railway (both supported)
+# Deployment guide: VPS (Docker Compose) and Railway
 
-Same code, same Dockerfile, two targets. Everything persistent lives in
-**MongoDB**, so an ephemeral filesystem (Railway) and a VPS with volumes are
-both safe.
+The recommended production target is a Linux VPS with Docker Compose. The Compose file starts the bot and a private MongoDB 7 service, persists application state in named volumes, loads secrets from a host-side JSON file, and binds the admin/health server to **127.0.0.1:8070**. A 4-vCPU / 32-GB VPS has ample capacity for the included limits (bot: 3.25 CPU / 8 GB; MongoDB: 0.75 CPU / 4 GB).
 
-| | VPS (docker compose) | Railway |
-|---|---|---|
-| Database | bundled MongoDB 7 container | MongoDB plugin (or Atlas) |
-| Data survives redeploy | ✅ named volumes | ✅ MongoDB (volume optional) |
-| Health check | `/health` on port 8080 | `/health` on `$PORT` (auto) |
-| Web admin panel | `/admin` on port 8080 | `/admin` on `$PORT` (auto) |
-| Config file | `.env` | Railway dashboard variables |
+For a step-by-step Hinglish guide with copy/paste commands, see [`DEPLOY_HINGLISH.md`](DEPLOY_HINGLISH.md).
 
----
+## Docker Compose on a VPS (recommended)
 
-## 0. Get your credentials first (both targets)
-
-| Variable | Where |
-|---|---|
-| `API_ID`, `API_HASH` | https://my.telegram.org/apps |
-| `BOT_TOKEN` | @BotFather → `/newbot` |
-| `ADMIN_ID` (and `OWNER_ID`) | @userinfobot — your numeric Telegram id |
-
-> `OWNER_ID` is the only account that sees the **Send PV** button. `ADMIN_ID`
-> already gets the admin panel; set `ADMIN_IDS` for extra admins.
-
----
-
-## 🖥️ Option A — VPS with Docker Compose (recommended)
-
-**Requirements:** any Linux VPS with Docker + Compose, 1 GB RAM is enough.
+The prepared edits in this delivery are local to the provided bundle and have not been pushed to the upstream GitHub repository. Upload/extract `Telegram-Panel-deploy-ready.zip` (or clone your own fork after pushing these changes), then run the following from the project root:
 
 ```bash
-# 1. Get the code
-git clone <your-repo-url> Telegram-Panel
-cd Telegram-Panel
-
-# 2. Configure
-cp env.example .env
-nano .env      # API_ID, API_HASH, BOT_TOKEN, ADMIN_ID (+ SUPPORT_USERNAME, CURRENCY)
-
-# 3. Start bot + MongoDB
+cd ~/Telegram-Panel
+mkdir -p config
+cp config.example.json config/config.json
+chmod 700 config
+chmod 600 config/config.json
+nano config/config.json
 docker compose up -d --build
-
-# 4. Watch it boot
+docker compose ps
 docker compose logs -f bot
-#   … "Bot started successfully and is ready to receive commands!"
-
-# 5. Health check
-curl -s localhost:8080/health
-#   {"status":"ok","storage":"MongoStore","accounts":{"live":0,…},"users":…}
 ```
 
-What the compose file does for you:
+Set `API_ID`, `API_HASH`, `BOT_TOKEN`, `ADMIN_ID`/`OWNER_ID`, a unique panel password of at least 16 characters, and a random panel secret of at least 32 characters. The sample values are deliberately invalid and must be replaced. Keep the JSON file private; Compose mounts it read-only. `MONGODB_URI`, `DATA_DIR`, `CLIENTS_JSON_PATH`, and `HEALTH_PORT` are supplied by Compose so they match the internal MongoDB service, persistent data volume, and port 8070.
 
-* starts **MongoDB 7** and points the bot at it (`MONGODB_URI=mongodb://mongo:27017`)
-* keeps `mongo_data`, `bot_data` (JSON fallback + session file) and `bot_logs`
-  in named volumes → `docker compose down && up` loses nothing
-* waits for MongoDB to be healthy before starting the bot
-* publishes the status endpoint on port **8080**
-
-**No Docker?** Plain install:
+Verify on the VPS:
 
 ```bash
-sudo apt install -y python3.11-venv   # or python3-venv
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# MongoDB (or use Atlas and skip this)
-sudo apt install -y mongodb-org || docker run -d -p 27017:27017 -v mongo:/data/db mongo:7.0
-
-cp env.example .env && nano .env      # MONGODB_URI=mongodb://127.0.0.1:27017
-python main.py
+curl -fsS http://127.0.0.1:8070/health
 ```
 
-Keep it alive with a systemd unit or `tmux`/`screen`:
-
-```ini
-# /etc/systemd/system/telegram-panel.service
-[Unit]
-Description=Telegram Panel
-After=network.target
-
-[Service]
-WorkingDirectory=/opt/Telegram-Panel
-ExecStart=/opt/Telegram-Panel/venv/bin/python main.py
-Restart=always
-RestartSec=10
-User=root
-
-[Install]
-WantedBy=multi-user.target
-```
+Open the dashboard via an SSH tunnel rather than exposing plain HTTP publicly:
 
 ```bash
-sudo systemctl enable --now telegram-panel && sudo journalctl -fu telegram-panel
+ssh -N -L 8070:127.0.0.1:8070 YOUR_SSH_USER@YOUR_VPS_IP
 ```
 
----
+Visit `http://127.0.0.1:8070/admin`. The port mapping in `docker-compose.yml` is intentionally localhost-only. If public access is required, use HTTPS plus a firewall/IP allow-list in a reverse proxy.
 
-## 🚄 Option B — Railway (step by step)
+State is stored in named volumes (`mongo_data`, `bot_data`, `bot_logs`). `docker compose down` preserves them; **do not use `docker compose down -v`** unless you deliberately want to erase them. For an archive-based install, upload/extract the newer bundle over the project directory and run `docker compose up -d --build`; `git pull` is available only if you push the prepared source to your own fork. To apply a JSON config edit, run `docker compose restart bot`.
 
-The repo ships `Dockerfile` + `railway.json`, both written to satisfy Railway's
-builder:
+## Railway (environment-variable deployment)
 
-* **no** `VOLUME` instruction (Railway: *"docker VOLUME at Line N is not
-  supported, use Railway Volumes"*) — attach a Railway Volume instead
-* **no** `HEALTHCHECK` instruction — a real `/health` route is served on `$PORT`
-* MongoDB is used for storage, so an ephemeral container filesystem is fine
+Railway can build the repository's Dockerfile directly. Do not set `CONFIG_SOURCE_FILE` there unless you also mount a config file: that variable is used by Compose to require and copy the VPS JSON configuration. Without it, the entrypoint uses Railway's environment variables and the existing platform-port behavior.
 
-### 1. Create the project
+1. Create a Railway project from this GitHub repository and add a MongoDB service (or use MongoDB Atlas).
+2. Add `API_ID`, `API_HASH`, `BOT_TOKEN`, `OWNER_ID` or `ADMIN_ID`, and a secure `ADMIN_PANEL_PASSWORD` / `ADMIN_PANEL_SECRET` in the bot service's Variables. Add `MONGO_URL` or `MONGODB_URI` for persistence.
+3. Do not hard-code `PORT`; Railway injects it. The app serves `/health` and `/admin` on the platform port.
+4. Deploy and inspect the service logs. If you need Telethon session files to survive redeploys as well, attach a persistent volume at `/data` and set `DATA_DIR=/data`.
 
-**Dashboard:** `New Project` → `Deploy from GitHub repo` → pick this repo.
+Railway environment values, tokens, and Telegram session data are sensitive. Use private variables and never paste them into public issue reports.
 
-**CLI:**
+## Auto-views troubleshooting
 
-```bash
-npm i -g @railway/cli
-railway login
-railway init          # create a new project
-railway up            # builds the Dockerfile and deploys
-```
+If the bot says auto views are enabled but no view request runs, inspect the latest bot log for `auto views skipped` or `Auto view requests on ...`. A skip for “no active views plan” means the plan is either missing/expired or its recipient is not linked to that channel. In **Admin Dashboard → Channels**, choose **sponsor** to link the plan holder without changing the channel owner; use **owner** only for a real ownership transfer. The updated dashboard refreshes automation immediately, and views begin on the next new post. Old skipped posts are not replayed automatically.
 
-### 2. Add MongoDB
+Successful and failed view-request batches now have per-post outcome logs. “Accepted” means Telegram's API request returned successfully; it does not independently verify that the public view counter increased. Failed batches do not consume finite post credits. Public channels are resolved by username; private channels use the stored invite and get one fresh-link retry if Telegram reports an invite problem.
 
-`+ New` → `Database` → **Add MongoDB** (same project).
+## Operational/security notes
 
-Railway then shares variables with your service:
-
-```
-MONGO_URL=mongodb://mongo:***@mongodb.railway.internal:27017
-MONGOHOST, MONGOPORT, MONGOUSER, MONGOPASSWORD, MONGO_DB
-```
-
-The bot reads **any** of these — no copying of connection strings needed:
-
-* `MONGODB_URI` → `MONGO_URI` → `MONGODB_URL` → `MONGO_URL`
-* or the parts `MONGOHOST` + `MONGOPORT` + `MONGOUSER` + `MONGOPASSWORD`
-  (built into a URI with `authSource=admin`)
-
-> Prefer Atlas? Set just `MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net`
-> and skip the plugin. Whitelist `0.0.0.0/0` (or Railway's egress IPs) in Atlas.
-
-### 3. Set the bot variables
-
-Service → **Variables** → *Raw editor*:
-
-```env
-API_ID=1234567
-API_HASH=0123456789abcdef0123456789abcdef
-BOT_TOKEN=123456789:AA...your-token...
-ADMIN_ID=123456789
-OWNER_ID=123456789
-SUPPORT_USERNAME=YourSupportHandle
-CURRENCY=₹
-STORAGE_BACKEND=auto
-```
-
-Do **not** set `PORT` (Railway injects it) and do **not** upload a `.env` file.
-
-### 4. Deploy & verify
-
-Deploy → **Deploy logs** should end with:
-
-```
-Bot started successfully and is ready to receive commands!
-```
-
-Then:
-
-```bash
-railway domain                      # optional: gives you a public URL
-curl -s https://<your-domain>/health
-# {"status":"ok","storage":"MongoStore","accounts":{"live":6,"total":6}, …}
-```
-
-Railway's healthcheck hits `/health` automatically; the value can also be seen
-in **Settings → Deploy → Healthcheck Path** (already set to `/health` by
-`railway.json`).
-
-### 5. Optional: Railway Volume
-
-Mount a **Volume at `/data`** (Service → Settings → Volumes). The app detects a
-writable `/data` and puts the JSON fallback + session file there, so even the
-no-MongoDB case survives redeploys. In MongoDB mode nothing depends on it.
-
-### 6. Daily use
-
-* redeploy after a code change: `railway up` (or push to the connected branch)
-* tail logs: `railway logs`
-* all state (accounts, wallets, orders, channels, settings) is in MongoDB, so a
-  redeploy is invisible to your users.
-
----
-
-## ☁️ Option C — Render / Fly.io / Koyeb
-
-Use the same `Dockerfile` as a **background worker**:
-
-| | Value |
-|---|---|
-| Build | Dockerfile in repo root |
-| Start command | `python main.py` |
-| Env | same variables as Railway; `MONGODB_URI` from Atlas, or `MONGO_URL` |
-| Disk (optional) | mount at `/data` when not using MongoDB |
-
-Fly.io example:
-
-```bash
-fly launch --no-deploy            # detects the Dockerfile
-fly secrets set API_ID=... API_HASH=... BOT_TOKEN=... ADMIN_ID=... \
-                MONGODB_URI="mongodb+srv://..."
-fly volumes create panel_data --size 1   # only if you skip MongoDB
-fly deploy && fly logs
-```
-
-`PORT` is injected by these platforms too, so `/health` just works.
-
----
-
-## 🖤 The web admin panel
-
-The same HTTP port that answers `/health` also serves the **brutalist admin
-dashboard** at `/admin`, so there is nothing extra to deploy:
-
-```bash
-# VPS / docker compose
-open http://<server-ip>:8080/admin
-
-# Railway / Render / Fly
-open https://<your-domain>/admin
-```
-
-Log in with **your Telegram user id** (the value in `OWNER_ID`/`ADMIN_ID`, or any
-owner/admin you added in the *Operators* tab) and the password from
-`ADMIN_PANEL_PASSWORD`. Without that variable the bot generates one and prints it
-in the log on first start — change it in *Settings ▸ `web.password`* at any time.
-
-What it does: live dashboard, **plan-request queue** (approve/reject what users
-asked for in *👑 Buy Premium*), users (wallet, plan grant/revoke, ban, DM), plans
-(create/edit/delete incl. channel slots), every pricing/settings section, channels
-(lock, owner, auto toggles, delete), orders (cancel/retry), the account pool, and
-**multiple owners** management. It writes to the same MongoDB the bot uses, so
-changes are visible in the bot instantly.
-
-**On a phone** the dashboard switches to a mobile layout (swipeable tabs, big
-touch targets, tables as cards, scrolling lists) — no app needed, just open
-`/admin` in Chrome or Safari.
-
-**Live refresh** patches only the changed boxes and pauses while you type, so an
-edit is never lost. Long tables (recent orders/users, orders, users, channels)
-scroll inside their own fixed-height box.
-
-Set `WEB_ADMIN=0` to serve the health endpoints only.
-
----
-
-## 🔍 Verifying a fresh deploy (2 minutes)
-
-```bash
-# 1. Process health + storage + account pool
-curl -s <host>:<port>/health | python -m json.tool
-
-# 2. Full panel behaviour against your real database (no Telegram credentials
-#    needed — runs the real panels/orders/automation against a fake transport)
-python scripts/live_check.py demo --mongo "mongodb+srv://..."
-#    → "all checks passed — the panel behaves as expected"
-
-# 3. Crash safety (write, hard-kill, verify from a fresh process)
-python scripts/live_check.py crash-write  --mongo "<uri>"
-python scripts/live_check.py crash-verify --mongo "<uri>"
-#    → "everything survived the hard crash"
-```
-
-Then in Telegram: `/start` → user panel appears → add the bot to a channel
-(*Add To Channel*) → post something → reactions should appear within seconds.
-
----
-
-## 🧯 Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `dockerfile invalid: docker VOLUME at Line N is not supported` | you are deploying an older zip — this repo's Dockerfile has no `VOLUME`; re-download the latest package |
-| `Environment configuration error … ADMIN_ID` | older builds required `ADMIN_ID`. Either add it in the dashboard **or** redeploy the current build — `OWNER_ID` / `ADMIN_IDS` alone is now enough |
-| Deploy logs show `Environment variable 'X' not set` for optional vars | harmless — only the Telegram credentials plus one owner id are required |
-| Values arrive with quotes (`"₹"`, `"8707101133"`) | handled: quotes, padding and stray newlines are stripped automatically since v2.1 |
-| `storage: "JsonStore"` in `/health` while using a cloud host | MongoDB is not reachable, so the bot deliberately kept running on the local store. Check the log line above it for the reason (wrong password, Atlas IP allow-list, missing `dnspython`). With Atlas, whitelist `0.0.0.0/0` for a quick test |
-| `MongoDB unreachable … falling back to the JSON store` | wrong credentials/host, or Atlas IP allow-list. Fix the URI; the bot keeps running meanwhile |
-| `API_ID / API_HASH were rejected by Telegram` | wrong `API_ID`/`API_HASH` — the bot stops retrying on purpose |
-| `BOT_TOKEN was rejected by Telegram` | reissue the token with @BotFather and update the variable |
-| Railway deploy healthy but bot silent | make sure exactly one replica is running, and that `ADMIN_ID` is your own numeric id |
-| `Could not read settings from store: name 'get_store_sync' is not defined` | fixed in this build — update and redeploy |
-| `Channel registered: … owner=None` | Telegram did not report who added the bot. Update to the latest build; the actor is now detected from `added_by`/the action message, and the panel shows an **Assign to me** button for anything still unowned |
-| Notifications show `</b>` or `<code>` as text | fixed in **v3.2** — every notification now asks Telegram to parse HTML |
-| `Invalid reaction provided (only emoji are allowed)` | the emoji is not in Telegram's own reaction set. v3.2 filters such emojis out, repairs the stored list on boot and retries with another emoji; check **Admin panel → ❤️ Reactions → Emojis** |
-| The same post got reactions twice | fixed in **v3.2** — a repeated/redelivered update is skipped per channel |
-| A newly added account is not used in older channels | it joins them automatically after sign-in (and once after each boot), up to the free cap of 10 |
-| The bot is removed but our accounts stay in the channel | fixed in **v3.2** — every account leaves, the channel record is dropped and you get a notification |
-| `Could not resolve chat -100…` on **every** reaction | fixed in **v3.1** — Telegram's *not-a-member* invite answer (`ChatInvite`) has no `.chat`, so the old code never sent the import and accounts stayed outside a private channel. Accounts now always import the bot's invite link; a revoked link is replaced and the batch retried once |
-| `Auto reactions … 0 ok, 0 failed` | the account pool is empty — sign in accounts from **Admin panel → 👤 Accounts → ➕ Add account**, then post again. The bot now warns you about this instead of staying silent |
-| Bot added, but reactions still missing | check the bot has **post messages + invite users** in that channel (use the panel's *Add To Channel* button), and that at least one account is in the pool |
-| `Could not create an invite link for …` | the bot needs the *Invite Users* permission in that channel; it retries automatically on the next post (and on a manual order too) |
-| Reactions work on a public channel but not on a private one | private channels require the *Invite Users* permission so the pool accounts can join. Re-add the bot with all permissions (or make the channel public) |
-| A user asks for views/comments but the buttons are locked | that is the premium gate — activate it per service: admin panel → 👥 Users → open the user → 👑 Give plan, or `/grant <user_id> views 30` |
-| `0 reactions on every post` | the account pool is empty (panel → 👤 Accounts → add) or the accounts are not in the channel yet (private channel: check the invite permission) |
-| `Another instance is using the same session file` | two deployments/containers share a session — stop the duplicate or set a different `BOT_SESSION_NAME` |
-| Bot cannot react in a channel | re-add the bot with **post_messages + invite_users** (the panel's *Add To Channel* button does it for you) |
+- The VPS JSON file is the single human-edited configuration source; there is no `.env` file in the recommended Compose workflow.
+- MongoDB is not published to the host. It is reachable only on the private Compose network.
+- Bot and Mongo logs are size-limited by Docker's `json-file` rotation; the application's own log files rotate at 10 MiB with five backups.
+- Telethon `.session` files and all runtime state live on persistent storage. Back up volumes before destructive maintenance.
+- Do not share raw production logs or session files. Logs can contain account, channel, and user identifiers.
+- Automated Telegram activity may trigger rate limits or account restrictions. Use only accounts and channels you are authorized to manage, and follow Telegram's terms.

@@ -1,0 +1,35 @@
+{
+  "API_ID": 0,
+  "API_HASH": "your_api_hash_here",
+  "BOT_TOKEN": "your_bot_token_here",
+  "BOT_SESSION_NAME": "bot2",
+
+  "ADMIN_ID": 0,
+  "OWNER_ID": 0,
+  "ADMIN_IDS": [],
+  "ADMIN_PANEL_PASSWORD": "CHANGE_ME_use_a_unique_password_of_16_chars_or_more",
+  "ADMIN_PANEL_SECRET": "CHANGE_ME_generate_a_random_secret_of_32_chars_or_more",
+  "WEB_ADMIN": true,
+
+  "HEALTH_PORT": 8070,
+  "HEALTH_HOST": "0.0.0.0",
+  "CHANNEL_ID": "",
+  "SUPPORT_USERNAME": "",
+  "CURRENCY": "₹",
+  "PAYMENT_UPI_ID": "",
+  "PAYMENT_UPI_NAME": "",
+
+  "MONGODB_URI": "mongodb://mongo:27017",
+  "MONGODB_DB": "telegram_panel",
+  "STORAGE_BACKEND": "mongo",
+  "DATA_DIR": "/app/data",
+  "CLIENTS_JSON_PATH": "/app/data/clients.json",
+
+  "RATE_LIMIT_SLEEP": 60,
+  "GROUPS_BATCH_SIZE": 10,
+  "GROUPS_UPDATE_SLEEP": 60,
+  "HTTP_PORT": 80,
+  "HTTPS_PORT": 443,
+  "TELEGRAM_PORT": 443,
+  "REPORT_CHECK_BOT": ""
+}

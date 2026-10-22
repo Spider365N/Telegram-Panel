@@ -70,7 +70,7 @@ When neither library is available:
 ### Account Management
 
 - **Add Account**: Add a new Telegram account
-  - Enter phone number (e.g., +1234567890)
+  - Enter phone number (e.g., +15550000004)
   - Enter verification code from Telegram
   - Enter 2FA password if enabled
   
@@ -124,7 +124,7 @@ Select number of accounts, then choose an operation:
 1. Start interactive CLI: `python interactive_cli.py`
 2. Select "Account Management"
 3. Select "Add Account"
-4. Enter phone number: `+1234567890`
+4. Enter phone number: `+15550000004`
 5. Enter verification code from Telegram
 6. Enter 2FA password if prompted
 7. Account is added and ready to use

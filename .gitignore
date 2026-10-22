@@ -31,6 +31,8 @@ logs/*.log
 # Configuration files (may contain sensitive data)
 clients.json
 config.json
+config/
+*.session-*
 
 # Runtime state (JSON fallback store: users, wallets, orders, sessions)
 data/

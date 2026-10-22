@@ -38,7 +38,7 @@ python cli_main.py list-accounts
 ### Add Account
 
 ```bash
-python cli_main.py add-account +1234567890
+python cli_main.py add-account +15550000004
 ```
 
 You will be prompted to:
@@ -63,7 +63,7 @@ Reactions: `👍`, `❤️`, `😂`, `😮`, `😢`, `😡`
 
 Example:
 ```bash
-python cli_main.py individual reaction +1234567890 "https://t.me/c/123456/789" 👍
+python cli_main.py individual reaction +15550000004 "https://t.me/c/123456/789" 👍
 ```
 
 ### Vote in Poll
@@ -74,7 +74,7 @@ python cli_main.py individual vote SESSION_NAME LINK OPTION_NUMBER
 
 Example:
 ```bash
-python cli_main.py individual vote +1234567890 "https://t.me/c/123456/789" 1
+python cli_main.py individual vote +15550000004 "https://t.me/c/123456/789" 1
 ```
 
 ### Join Group/Channel
@@ -85,7 +85,7 @@ python cli_main.py individual join SESSION_NAME LINK
 
 Example:
 ```bash
-python cli_main.py individual join +1234567890 "https://t.me/username"
+python cli_main.py individual join +15550000004 "https://t.me/username"
 ```
 
 ### Leave Group/Channel
@@ -170,10 +170,10 @@ python cli_main.py bulk comment NUM_ACCOUNTS LINK "COMMENT_TEXT"
 python cli_main.py list-accounts
 
 # Add a new account
-python cli_main.py add-account +1234567890
+python cli_main.py add-account +15550000004
 
 # Apply reaction with one account
-python cli_main.py individual reaction +1234567890 "https://t.me/c/123456/789" 👍
+python cli_main.py individual reaction +15550000004 "https://t.me/c/123456/789" 👍
 
 # Apply reaction with 5 accounts
 python cli_main.py bulk reaction 5 "https://t.me/c/123456/789" 👍
@@ -184,8 +184,8 @@ python cli_main.py bulk join 3 "https://t.me/username"
 
 ## Notes
 
-- All operations require valid API_ID and API_HASH in `.env` file
-- Session files are stored in the project directory
+- All operations require valid `API_ID` and `API_HASH`; the VPS deployment reads them from `config/config.json`, while legacy/manual installs may use environment variables or `.env`.
+- Session files are stored under `DATA_DIR/sessions` (in Docker this is the persistent `/app/data/sessions` volume).
 - Accounts are automatically saved after adding
 - CLI operations are independent of the Telegram bot
 

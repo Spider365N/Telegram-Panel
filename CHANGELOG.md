@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased] - 2026-10-22
+
+**Auto views reliability, channel-plan attribution, and concurrent multi-user fixes.**
+
+* Persist the actual bot-adder separately from the channel owner when updating an
+  existing record, so a views plan granted to the linked manager is recognized.
+* Add an explicit Admin Dashboard **sponsor** action that links a plan holder to a
+  channel without transferring ownership; refresh views/comments automation as
+  soon as the association is made. Plan notices now call out when no channel is
+  linked to the recipient.
+* Resolve public auto-view targets by username, use configured delays, retry a
+  stale private invite once, log each post's accepted/failed request counts, and
+  avoid spending finite post credits after a failed delivery.
+* Make channel post deduplication compare-and-set atomic and sponsor insertion
+  atomic, preventing duplicate processing and lost plan-holder links under
+  concurrent updates/orders.
+* Add regression coverage for channel attribution, public/private view flows,
+  failure credits/logging, tenant isolation, and concurrent store updates.
+
 ## [3.5.1] - 2026-10-17
 
 **Hotfix — buttons and badges were printed as code on the dashboard.**
@@ -164,7 +183,7 @@ web admin panel that is live-synced with the bot.**
   the bot's *Groups per account* screen all read the registry now; an account
   that authorizes again is marked active there automatically.
 * ``AccountRegistry.doc_id_for`` resolves every spelling of a session name
-  (``919000000002``, ``+919000000002``, ``919000000002.session``), so usage
+  (``800000002``, ``+15550000001``, ``800000002.session``), so usage
   counters (reactions/views/comments/poll votes) and status updates are never
   silently skipped for real accounts.
 * 2 new regression tests (878 total) + the full live check (112 checks) green.
@@ -311,7 +330,7 @@ pool, removing the bot leaves accounts behind" release.**
 ## [3.1.0] - 2026-10-16
 
 **The "accounts cannot join my channel" release.** The operator's log showed every
-reaction failing with `Could not resolve chat -1003852827894 …` even though the bot
+reaction failing with `Could not resolve chat -100800000001 …` even though the bot
 had all channel permissions — this was a code bug, not a permission problem.
 
 ### The real join bug (root cause)
@@ -515,7 +534,7 @@ persistence, a free reaction engine, paid services and a very large test suite.
 - Private channels are supported end to end: a fresh invite link is exported and
   stored, accounts join through it, and the entity access-hash is cached in
   MongoDB — this fixes the production crash
-  `Could not find the input entity for PeerChannel(channel_id=3852827894)`.
+  `Could not find the input entity for PeerChannel(channel_id=800000001)`.
 
 **Paid services**
 - Plans for reactions, views, members, polls, comments and premium; custom

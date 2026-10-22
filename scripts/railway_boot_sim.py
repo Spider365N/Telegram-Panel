@@ -38,14 +38,14 @@ def check(condition: bool, label: str) -> bool:
 
 
 def production_env() -> dict:
-    """The operator's Railway variables, quotes and all — nothing made up."""
+    """A synthetic Railway-style fixture with deliberately fake credentials."""
     return {
-        "API_ID": '"37777967"',
-        "API_HASH": '"8fa425fee5678d74d6d5f3d1d1cf9e0d"',
-        "BOT_TOKEN": '"8763301063:AAF2F3COJvyabKVCVPkGpjJcySbG9sTLwL4"',
-        "OWNER_ID": '"8707101133"',
+        "API_ID": '"12345678"',
+        "API_HASH": '"test_api_hash_not_real_0123456789"',
+        "BOT_TOKEN": '"123456789:TEST_TOKEN_NOT_REAL"',
+        "OWNER_ID": '"123456789"',
         "ADMIN_ID": '""',                 # legacy name left empty on purpose
-        "CHANNEL_ID": '"-1003852827894"',
+        "CHANNEL_ID": '"-1001234567890"',
         "MONGODB_URI": '"mongodb://127.0.0.1:27017"',
         "MONGODB_DB": '"telegram_panel_bootsim"',
         "STORAGE_BACKEND": '"auto"',
@@ -128,8 +128,8 @@ async def main() -> None:
     print("\n1) Environment resolution (quoted values, empty ADMIN_ID)")
     from src import config as app_config
     reset_simulation_database()
-    check(app_config.API_ID == 37777967, f"API_ID parsed from quotes -> {app_config.API_ID}")
-    check(isinstance(app_config.OWNER_ID, int) and app_config.OWNER_ID == 8707101133,
+    check(app_config.API_ID == 12345678, f"API_ID parsed from quotes -> {app_config.API_ID}")
+    check(isinstance(app_config.OWNER_ID, int) and app_config.OWNER_ID == 123456789,
           f"OWNER_ID -> {app_config.OWNER_ID}")
     check(str(app_config.STORAGE_BACKEND).lower() in ("auto", "mongo", "mongodb"),
           f"STORAGE_BACKEND -> {app_config.STORAGE_BACKEND}")
@@ -159,7 +159,7 @@ async def main() -> None:
     check("reactions" in cfg and cfg["reactions"]["auto"]["min_accounts"] == 8,
           "settings readable from the store (no NameError)")
     check(cfg["reactions"]["auto"]["delay_max"] == 3.0, "free-tier delay default is 1-3s")
-    check(await users.is_owner(8707101133), "OWNER_ID is recognised as the owner")
+    check(await users.is_owner(123456789), "OWNER_ID is recognised as the owner")
 
     print("\n4) Health endpoint on $PORT")
     from src.health import HealthServer, health_port_from_env
@@ -188,16 +188,16 @@ async def main() -> None:
     from src.services.autoengage import get_auto_engagement
     from src.services.channels import get_channel_service
     channels = get_channel_service()
-    await channels.register(-1003852827894, 8707101133, title="Boot Sim Channel")
+    await channels.register(-1001234567890, 123456789, title="Boot Sim Channel")
     auto = get_auto_engagement()
-    info = await auto.enable_free_plan(-1003852827894)
+    info = await auto.enable_free_plan(-1001234567890)
     check(info.get("reactions") == "on (free)", f"free plan started ({info.get('reactions')})")
     # no accounts signed in -> the bot must say so instead of a silent success
-    outcome = await auto.handle_new_post(-1003852827894, 1)
+    outcome = await auto.handle_new_post(-1001234567890, 1)
     reactions = outcome.get("reactions") or {}
     check("reactions" in outcome, f"automation ran ({reactions})")
     check(reactions.get("ok", 0) == 0, "0 reactions with an empty pool (expected)")
-    doc = await channels.get(-1003852827894)
+    doc = await channels.get(-1001234567890)
     check(doc["auto_reactions"]["enabled"] is True, "auto reactions stay enabled for free tier")
 
     print("\n" + "=" * 60)
