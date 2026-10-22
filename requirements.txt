@@ -1,0 +1,17 @@
+telethon==1.43.2  # >=1.43 required for colored inline buttons (Bot API 9.4 style field)
+python-dotenv==1.0.0
+pymongo>=4.9.0  # MongoDB storage (AsyncMongoClient) for crash-proof persistence
+dnspython>=2.4  # required for mongodb+srv:// (MongoDB Atlas) connection strings
+aiohttp
+requests
+pysocks
+click>=8.0.0
+prompt-toolkit>=3.0.0
+rich>=13.0.0
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+dockerfile-parse>=2.0.0  # validates the Dockerfile in tests/test_deploy_config.py
+

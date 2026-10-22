@@ -1,0 +1,10 @@
+# Fallback for Railway/Render when the builder is set to Nixpacks instead of
+# the Dockerfile. Keeps the deploy working either way.
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
+
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
+
+[start]
+cmd = "python main.py"

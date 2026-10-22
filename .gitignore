@@ -1,0 +1,60 @@
+# Environment variables and secrets
+.env
+*.session
+*.session-journal
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/*.log
+*.log
+
+# Configuration files (may contain sensitive data)
+clients.json
+config.json
+
+# Runtime state (JSON fallback store: users, wallets, orders, sessions)
+data/
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Cursor IDE
+.cursor/
+.cursorrules
