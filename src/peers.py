@@ -4,10 +4,10 @@ Robust peer / entity resolution for Telegram clients.
 Why this module exists
 ----------------------
 Telethon can only talk to a channel it already knows about. A link like
-``https://t.me/c/3852827894/22`` only gives us an id, and calling
-``client.get_entity(-1003852827894)`` raises:
+``https://t.me/c/800000001/22`` only gives us an id, and calling
+``client.get_entity(-100800000001)`` raises:
 
-    Could not find the input entity for PeerChannel(channel_id=3852827894)
+    Could not find the input entity for PeerChannel(channel_id=800000001)
 
 ...because the *access hash* for that channel was never cached in the session
 (the account had never seen the channel). This module fixes that for good:
@@ -91,7 +91,7 @@ def parse_link(link: str) -> LinkInfo:
             info.invite_hash = match.group("hash")
             return info
 
-    # Bare numeric id (-1001234567890 or 1234567890)
+    # Bare numeric id (-100800000002 or 800000002)
     if re.fullmatch(r"-?\d+", text):
         value = int(text)
         if value > 0:
@@ -315,7 +315,7 @@ class PeerResolver:
 
     @staticmethod
     def to_internal_channel_id(chat_id) -> int:
-        """``-1003852827894`` → ``3852827894`` (Telegram's raw channel id)."""
+        """``-100800000001`` → ``800000001`` (Telegram's raw channel id)."""
         text = str(int(chat_id))
         if text.startswith("-100") and len(text) > 4:
             return int(text[4:])

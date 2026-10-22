@@ -4,8 +4,10 @@ from typing import List, Optional
 from telethon import TelegramClient, events, Button
 from telethon.errors import FloodWaitError
 import asyncio
-from src.config import API_ID, API_HASH, BOT_TOKEN, ADMIN_ID, ADMIN_IDS, OWNER_ID
-from src.config import ConfigManager, validate_env_file
+from src.config import (
+    API_ID, API_HASH, BOT_TOKEN, BOT_SESSION_NAME, ADMIN_ID, ADMIN_IDS, OWNER_ID,
+    CLIENTS_JSON_PATH, ConfigManager, validate_env_file,
+)
 from src.logger import setup_logging
 from src.handlers import MessageHandler, CallbackHandler, CommandHandler, AccountHandler
 from src.client import SessionManager
@@ -17,6 +19,7 @@ from src.runtime import set_bot
 from src.services.accounts import get_account_registry
 from src.services.autoengage import get_auto_engagement
 from src.services.channels import get_channel_service
+from src.utils import get_safe_session_file_path
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -30,7 +33,7 @@ def _credentials_hint(exc: BaseException) -> "Optional[str]":
     if name in ("AuthKeyUnregisteredError", "AuthKeyDuplicatedError",
                 "UserDeactivatedBanError", "AccessTokenInvalidError"):
         return ("BOT_TOKEN was rejected by Telegram — create a new token with "
-                "@BotFather and update .env, then restart.")
+                "@BotFather, update config/config.json, then restart.")
     message = str(exc)
     if "two different IP addresses" in message:
         return ("Another instance is using the same session file. Stop the duplicate "
@@ -44,7 +47,7 @@ class TelegramBot:
         Initialize the TelegramBot class with necessary components.
         """
         try:
-            self.config_manager = ConfigManager('clients.json')
+            self.config_manager = ConfigManager(CLIENTS_JSON_PATH)
             self.config = self.config_manager.load_config()
             self.tbot = None
             self.active_clients = {}
@@ -91,7 +94,8 @@ class TelegramBot:
             # Create TelegramClient now that we're in an async context
             if self.tbot is None or not self.tbot.is_connected():
                 if self.tbot is None:
-                    self.tbot = TelegramClient('bot2', API_ID, API_HASH)
+                    bot_session_path = get_safe_session_file_path(BOT_SESSION_NAME)
+                    self.tbot = TelegramClient(bot_session_path, API_ID, API_HASH)
                     logger.info("TelegramClient created")
                 elif not self.tbot.is_connected():
                     logger.info("Reconnecting TelegramClient...")
@@ -606,8 +610,8 @@ class TelegramBot:
     async def _export_invite(self, channel_id: int):
         """Create a fresh invite link for a channel the bot administrates.
 
-        Accepts either the raw channel id (``3852827894``) or the marked form
-        (``-1003852827894``) — both appear depending on where the caller got it.
+        Accepts either the raw channel id (``800000001``) or the marked form
+        (``-100800000001``) — both appear depending on where the caller got it.
         """
         if self.tbot is None:
             logger.warning(f"Cannot export an invite for {channel_id} yet — bot client not ready")
@@ -889,7 +893,9 @@ class TelegramBot:
             port = health_port_from_env()
             if not port:
                 return
-            self.health_server = HealthServer(port, bot=self)
+            self.health_server = HealthServer(
+                port, host=getattr(app_config, "HEALTH_HOST", "0.0.0.0"), bot=self
+            )
             await self.health_server.start()
         except Exception as exc:
             logger.warning(f"Health endpoint disabled: {exc}")

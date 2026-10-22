@@ -47,9 +47,9 @@ class TestMongoPersistence:
         client = FakeTelegramClient("phone1", user_id=555)
         client._me = type("Me", (), {
             "id": 555, "username": "tester", "first_name": "Test", "last_name": "",
-            "phone": "+919000000001",
+            "phone": "+15550000011",
         })()
-        saved = await accounts.save_signed_in(client, phone="+919000000001", owner_id=1)
+        saved = await accounts.save_signed_in(client, phone="+15550000011", owner_id=1)
         doc_id = saved["_id"]
         await mongo_store.close()
 

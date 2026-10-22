@@ -247,7 +247,21 @@ async def test_channel_lock_owner_and_delete(monkeypatch):
         chan = await stack.channels.get(channel_id)
         assert (chan.get("auto_reactions") or {}).get("enabled") is True
 
-        await client.post(f"/admin/api/channels/{channel_id}/owner", json={"owner_id": 5550199})
+        await stack.users.grant_plan(5550199, kinds=["views"], days=30, notify=False)
+        sponsor_response = await client.post(
+            f"/admin/api/channels/{channel_id}/sponsor", json={"user_id": 5550199}
+        )
+        sponsor_payload = await sponsor_response.json()
+        assert sponsor_payload["automation"]["views"] == 1
+        chan = await stack.channels.get(channel_id)
+        assert int(chan["owner_id"]) == 5550100  # sponsor linking does not transfer ownership
+        assert 5550199 in chan["sponsors"]
+        assert (chan.get("auto_views") or {}).get("enabled") is True
+
+        response = await client.post(
+            f"/admin/api/channels/{channel_id}/owner", json={"owner_id": 5550199}
+        )
+        assert (await response.json())["automation"]["views"] == 1
         chan = await stack.channels.get(channel_id)
         assert int(chan["owner_id"]) == 5550199
 

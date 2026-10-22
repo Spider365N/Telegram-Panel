@@ -231,11 +231,11 @@ class TestEdgeCases:
     async def test_invalid_phone_number_formats(self, mock_tbot, mock_event):
         """Test various invalid phone number formats"""
         invalid_numbers = [
-            "1234567890",  # No +
+            "15550000004",  # No +
             "+123",  # Too short
             "+1234567890123456",  # Too long
             "+abc123456",  # Non-numeric
-            "1234567890+",  # Wrong position
+            "15550000004+",  # Wrong position
         ]
         
         from src.validation import InputValidator

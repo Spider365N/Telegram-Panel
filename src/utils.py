@@ -169,35 +169,46 @@ def sanitize_session_name(session_name: str) -> str:
 
 
 def get_safe_session_file_path(session_name: str, project_dir: Optional[str] = None) -> str:
+    """Return a path-safe, persistent Telethon SQLite session path.
+
+    By default sessions live under ``DATA_DIR/sessions`` so Docker restarts and
+    image rebuilds do not strand credentials in the container's writable layer.
+    An explicit ``project_dir`` keeps the legacy/test behavior. If an old
+    root-level ``*.session`` file is found, it is moved to the persistent
+    directory once, before a client opens it.
     """
-    Get a safe session file path, ensuring it's within the project directory.
-    
-    Args:
-        session_name: Session name to create file path for
-        project_dir: Optional project directory (defaults to current directory)
-        
-    Returns:
-        Safe session file path
-        
-    Raises:
-        ValueError: If path traversal is detected or session name is invalid
-    """
-    # Sanitize session name first
     sanitized = sanitize_session_name(session_name)
     session_file = f"{sanitized}.session"
-    
-    # Get absolute paths
+
+    legacy_path = None
     if project_dir is None:
-        project_dir = os.path.abspath('.')
-    else:
-        project_dir = os.path.abspath(project_dir)
-    
+        try:
+            from src.config import DATA_DIR
+            project_dir = os.path.join(os.path.abspath(os.path.expanduser(str(DATA_DIR))), "sessions")
+            legacy_path = os.path.abspath(os.path.join(os.getcwd(), session_file))
+        except Exception:  # pragma: no cover - import/bootstrap fallback
+            project_dir = os.path.abspath(".")
+    project_dir = os.path.abspath(os.path.expanduser(str(project_dir)))
+    os.makedirs(project_dir, exist_ok=True)
+
     final_path = os.path.abspath(os.path.join(project_dir, session_file))
-    
-    # Verify the final path is within project directory
-    if not final_path.startswith(project_dir):
-        raise ValueError(f"Path traversal detected! Session name: {session_name}")
-    
+    try:
+        contained = os.path.commonpath((project_dir, final_path)) == project_dir
+    except ValueError:  # different drives on Windows
+        contained = False
+    if not contained:
+        raise ValueError("Path traversal detected in session path")
+
+    if (
+        legacy_path and legacy_path != final_path and os.path.isfile(legacy_path)
+        and not os.path.exists(final_path)
+    ):
+        try:
+            os.replace(legacy_path, final_path)
+            logger.info("Moved a legacy Telegram session into the persistent data directory")
+        except OSError as exc:
+            logger.warning("Could not migrate a legacy Telegram session; keeping the original: %s", exc)
+
     return final_path
 
 

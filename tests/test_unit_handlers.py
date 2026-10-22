@@ -103,7 +103,7 @@ class TestMessageHandler:
     async def test_message_handler_phone_number(self, mock_tbot, mock_event):
         """Test message handler for phone number input"""
         mock_tbot._conversations[mock_event.chat_id] = 'phone_number_handler'
-        mock_event.message.text = "+1234567890"
+        mock_event.message.text = "+15550000004"
         
         handler = MessageHandler(mock_tbot)
         handler.account_handler.phone_number_handler = AsyncMock()

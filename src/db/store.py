@@ -221,6 +221,21 @@ def _apply_update(doc: Dict[str, Any], update: Dict[str, Any]) -> bool:
                 else:
                     arr.append(val)
                 changed = True
+        elif op == "$addToSet":
+            # Match Mongo's atomic set insertion for the JSON/memory backends.
+            # This is used for channel sponsors, where a read/append/write could
+            # otherwise lose one user's association when two orders complete at
+            # the same time.
+            for path, val in fields.items():
+                arr = _get_path(doc, path)
+                if not isinstance(arr, list):
+                    arr = []
+                    _set_path(doc, path, arr)
+                values = val.get("$each", []) if isinstance(val, dict) and "$each" in val else [val]
+                for item in values:
+                    if item not in arr:
+                        arr.append(item)
+                        changed = True
         elif op == "$pull":
             for path, val in fields.items():
                 arr = _get_path(doc, path)

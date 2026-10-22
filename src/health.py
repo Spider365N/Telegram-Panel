@@ -124,7 +124,8 @@ class HealthServer:
 
         # Brutalist web admin panel (same loop, same services → live sync).
         try:
-            if (os.getenv("WEB_ADMIN", "1") or "").strip() not in ("0", "off", "no"):
+            web_admin_setting = (os.getenv("WEB_ADMIN", "1") or "1").strip().lower()
+            if web_admin_setting not in {"0", "off", "no", "false"}:
                 from src.webadmin import get_web_admin
 
                 get_web_admin(self.bot).install(app)

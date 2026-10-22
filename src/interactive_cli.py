@@ -17,7 +17,9 @@ from src.config import ConfigManager, API_ID, API_HASH
 from src.actions import Actions
 from src.client import SessionManager
 from src.validation import InputValidator
-from src.utils import get_session_name, resolve_entity, sanitize_session_name
+from src.utils import (
+    get_session_name, get_safe_session_file_path, resolve_entity, sanitize_session_name,
+)
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.contacts import BlockRequest
 from src.logger import setup_logging
@@ -578,7 +580,7 @@ class InteractiveCLI:
         """Add account flow."""
         self._print_header("Add Account")
         
-        phone = await self._get_input("Enter phone number (e.g., +1234567890)", 
+        phone = await self._get_input("Enter phone number (e.g., +15550000004)",
                                      InputValidator.validate_phone_number,
                                      allow_cancel=True)
         if not phone:
@@ -594,7 +596,7 @@ class InteractiveCLI:
                 return
 
             # Show loading while connecting
-            client = TelegramClient(session_name, API_ID, API_HASH)
+            client = TelegramClient(get_safe_session_file_path(session_name), API_ID, API_HASH)
             await self._show_loading("Connecting to Telegram", client.connect())
             
             if not await client.is_user_authorized():

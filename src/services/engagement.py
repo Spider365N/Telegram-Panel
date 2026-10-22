@@ -693,36 +693,64 @@ class EngagementService:
         message_id: int,
         views_per_post: Optional[int] = None,
         invite_link: Optional[str] = None,
+        username: Optional[str] = None,
     ) -> OperationResult:
-        """Auto-views for a newly published post."""
+        """Auto-views for a newly published post.
+
+        Public channels must be resolved by username for accounts that have not
+        joined them or cached their access hash. Private channels use the bot's
+        invite link and join only when needed.
+        """
         views_cfg = await self.settings.section("views")
         auto_cfg = views_cfg.get("auto", {}) or {}
-        per_post = int(views_per_post or auto_cfg.get("views_per_post", 100))
+        try:
+            per_post = int(views_per_post or auto_cfg.get("views_per_post", 100))
+        except (TypeError, ValueError):
+            per_post = int(auto_cfg.get("views_per_post", 100) or 100)
+        per_post = max(1, per_post)
+        delay_min = float(auto_cfg.get("delay_min", 1.0))
+        delay_max = float(auto_cfg.get("delay_max", 6.0))
         available = await self.registry.available_count()
         clients = await self.registry.pick(min(per_post, available) if available else 0)
         if not clients:
-            return OperationResult(errors=["No signed-in accounts available"])
+            return OperationResult(
+                errors=["No signed-in accounts available"],
+                details={"requested": per_post, "accounts_used": 0, "delivered": 0},
+            )
         invite_hash = None
         if invite_link:
             info = parse_link(invite_link)
             invite_hash = info.invite_hash or info.username or None
 
         async def worker(name: str, client) -> bool:
-            entity = await self.resolver.resolve(client, channel_id, join=True,
-                                                 invite_hash=invite_hash)
+            entity = await self.resolver.resolve(
+                client, channel_id, username=username, join=True,
+                invite_hash=invite_hash,
+            )
             try:
                 await client.get_messages(entity, ids=[int(message_id)])
             except Exception as exc:  # noqa: BLE001
-                logger.debug(f"get_messages failed: {exc}")
-            await client(GetMessagesViewsRequest(peer=entity, id=[int(message_id)], increment=True))
+                logger.debug(f"get_messages for auto views failed: {type(exc).__name__}")
+            await client(GetMessagesViewsRequest(
+                peer=entity, id=[int(message_id)], increment=True
+            ))
             doc_id = await self.registry.doc_id_for(name)
             if doc_id:
                 await self.registry.store.touch(doc_id, kind="views")
             return True
 
-        result = await self._run_batch(clients, worker, delay_min=1.0, delay_max=6.0,
-                                       label="auto-views", progress_every=10)
-        result.details["accounts_used"] = len(clients)
+        result = await self._run_batch(
+            clients, worker, delay_min=delay_min, delay_max=delay_max,
+            label="auto-views", progress_every=10,
+        )
+        sent = result.ok
+        result.details.update({
+            "requested": per_post,
+            "accounts_used": len(clients),
+            "delivered": sent,
+        })
+        if per_post > sent:
+            result.details["shortfall"] = per_post - sent
         return result
 
     # ------------------------------------------------------------------

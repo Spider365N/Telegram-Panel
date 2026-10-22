@@ -1,5 +1,5 @@
 """
-Round 6 — everything the production log (`logs.1792174308515.json`) reported.
+Round 6 — everything the production log (`logs.800000003.json`) reported.
 
 Each test here pins one of the operator's requirements:
 
@@ -61,14 +61,14 @@ class TestSignInRetries:
                                                mock_telegram_client):
         mock_event.message.text = "00000"
         mock_tbot.handlers.update({"temp_client": mock_telegram_client,
-                                   "temp_phone": "+1234567890"})
+                                   "temp_phone": "+15550000001"})
         mock_telegram_client.sign_in = AsyncMock(
             side_effect=PhoneCodeInvalidError(request=Mock())
         )
         await handler.code_handler(mock_event)
 
         assert mock_tbot.handlers.get("temp_client") is mock_telegram_client
-        assert mock_tbot.handlers.get("temp_phone") == "+1234567890"
+        assert mock_tbot.handlers.get("temp_phone") == "+15550000001"
         assert mock_tbot.handlers.get("temp_attempts") == 1
         sent = [str(call) for call in mock_tbot.tbot.send_message.call_args_list]
         assert any("2" in text and "attempt" in text for text in sent), sent
@@ -78,7 +78,7 @@ class TestSignInRetries:
                                                     mock_telegram_client):
         mock_event.message.text = "00000"
         mock_tbot.handlers.update({"temp_client": mock_telegram_client,
-                                   "temp_phone": "+1234567890",
+                                   "temp_phone": "+15550000013",
                                    "temp_attempts": 2})
         mock_telegram_client.sign_in = AsyncMock(
             side_effect=PhoneCodeInvalidError(request=Mock())
@@ -94,7 +94,7 @@ class TestSignInRetries:
                                                              mock_event, mock_telegram_client):
         mock_event.message.text = "12345"
         mock_tbot.handlers.update({"temp_client": mock_telegram_client,
-                                   "temp_phone": "+1234567890",
+                                   "temp_phone": "+15550000014",
                                    "temp_attempts": 1})
         mock_telegram_client.sign_in = AsyncMock()
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=True)
@@ -109,7 +109,7 @@ class TestSignInRetries:
                                                       mock_telegram_client):
         mock_event.message.text = "wrong-password"
         mock_tbot.handlers.update({"temp_client": mock_telegram_client,
-                                   "temp_phone": "+1234567890"})
+                                   "temp_phone": "+15550000015"})
         mock_telegram_client.sign_in = AsyncMock(
             side_effect=PasswordHashInvalidError(request=Mock())
         )
@@ -151,7 +151,7 @@ class TestPoolSelfHealing:
     @pytest.mark.asyncio
     async def test_a_dropped_account_is_reconnected(self):
         stack = await session_stack(2)
-        dropped = "919797869192"
+        dropped = next(name for name in stack.bot.active_clients if not name.startswith("phone"))
         client = stack.bot.active_clients[dropped]
         await client.disconnect()                     # the sqlite-lock crash
         assert client.is_connected() is False
@@ -226,7 +226,7 @@ class TestPlanUnlocksEverything:
         from src import config as app_config
 
         stack = await build_stack({})
-        admin_id = 987654321
+        admin_id = 800000005
         original = list(getattr(app_config, "ADMIN_IDS", []) or [])
         app_config.ADMIN_IDS = [admin_id]
         try:
@@ -243,12 +243,12 @@ class TestPlanUnlocksEverything:
     @pytest.mark.asyncio
     async def test_granting_a_plan_switches_channel_automation_back_on(self):
         stack = await build_stack({})
-        await stack.channels.register(-100770001, USER, title="Promo")
+        await stack.channels.register(-100800000001, USER, title="Promo")
         await stack.settings.set_path("views.auto.enabled", True)
 
         await stack.users.grant_plan(USER, kinds=["views", "comments"], days=30)
 
-        channel = await stack.channels.get(-100770001)
+        channel = await stack.channels.get(-100800000001)
         assert (channel.get("auto_views") or {}).get("enabled") is True
         assert (channel.get("auto_comments") or {}).get("enabled") is True
 
@@ -266,21 +266,21 @@ class TestAutoComments:
             }
             stack = await build_stack(clients)
             await stack.registry.sync_from_live_clients()
-            await stack.channels.register(-100700700, USER,
+            await stack.channels.register(-100800000002, USER,
                                           title="Comments Test", invite_link="https://t.me/+inv")
             if texts:
                 await stack.settings.set_path("comments.auto.texts", texts)
             await stack.settings.set_path("comments.auto.enabled", True)
             if entitled:
                 await stack.users.grant_plan(USER, kinds=["comments"], days=30)
-            await stack.channels.set_auto_comments(-100700700, True, accounts=3)
+            await stack.channels.set_auto_comments(-100800000002, True, accounts=3)
             return stack
         return build
 
     @pytest.mark.asyncio
     async def test_random_positive_comments_are_posted(self):
         stack = await self._stack()()
-        result = await stack.auto.handle_new_post(-100700700, 5)
+        result = await stack.auto.handle_new_post(-100800000002, 5)
         assert result["comments"]["ok"] >= 1, result
 
         posted = [
@@ -295,7 +295,7 @@ class TestAutoComments:
     @pytest.mark.asyncio
     async def test_without_a_plan_nothing_is_posted(self):
         stack = await self._stack(entitled=False)()
-        result = await stack.auto.handle_new_post(-100700700, 6)
+        result = await stack.auto.handle_new_post(-100800000002, 6)
         assert "comments" not in result
         assert not any(
             message.get("comment_to") == 6
@@ -313,15 +313,15 @@ class TestAutoViews:
                                          member_of={CH}),
         }
         stack = await build_stack(clients)
-        await stack.channels.register(-100700700, USER, title="Promo", invite_link="https://t.me/+inv")
+        await stack.channels.register(-100800000002, USER, title="Promo", invite_link="https://t.me/+inv")
         await stack.registry.sync_from_live_clients()
         await stack.settings.set_path("views.auto.enabled", True)
-        await stack.channels.set_auto_views(-100700700, True)
+        await stack.channels.set_auto_views(-100800000002, True)
 
-        outcome = await stack.auto.handle_new_post(-100700700, 7)
+        outcome = await stack.auto.handle_new_post(-100800000002, 7)
 
         assert "views" not in outcome
-        channel_doc = await stack.channels.get(-100700700)
+        channel_doc = await stack.channels.get(-100800000002)
         assert (channel_doc.get("auto_views") or {}).get("enabled") is True, channel_doc
 
     @pytest.mark.asyncio
@@ -332,13 +332,13 @@ class TestAutoViews:
                                          member_of={CH}),
         }
         stack = await build_stack(clients)
-        await stack.channels.register(-100700700, USER, title="Promo", invite_link="https://t.me/+inv")
+        await stack.channels.register(-100800000002, USER, title="Promo", invite_link="https://t.me/+inv")
         await stack.registry.sync_from_live_clients()
         await stack.settings.set_path("views.auto.enabled", True)
-        await stack.channels.set_auto_views(-100700700, True)
+        await stack.channels.set_auto_views(-100800000002, True)
         await stack.users.grant_plan(USER, kinds=["views"], days=30)
 
-        outcome = await stack.auto.handle_new_post(-100700700, 8)
+        outcome = await stack.auto.handle_new_post(-100800000002, 8)
         assert outcome.get("views", {}).get("ok", 0) >= 1, outcome
 
 
@@ -354,9 +354,9 @@ class TestAutoJoinStaysInTheLogs:
             for index in range(2)
         }
         stack = await build_stack(clients)
-        await stack.channels.register(-100700700, USER, title="Promo", invite_link="https://t.me/+inv")
+        await stack.channels.register(-100800000002, USER, title="Promo", invite_link="https://t.me/+inv")
         await stack.registry.sync_from_live_clients()
-        await stack.channels.set_auto_reactions(-100700700, True)
+        await stack.channels.set_auto_reactions(-100800000002, True)
 
         with caplog.at_level("INFO"):
             outcome = await stack.auto.warm_all_channels(reason="test", notify=True)
@@ -374,7 +374,7 @@ class TestPanelGodMode:
         from src import config as app_config
 
         stack = await build_stack({})
-        admin_id = 555000111
+        admin_id = 800000006
         original_owner = getattr(app_config, "OWNER_ID", 0)
         original_admins = list(getattr(app_config, "ADMIN_IDS", []) or [])
         app_config.OWNER_ID = admin_id
@@ -416,7 +416,7 @@ class TestPlanCoveredOrderAttribution:
         await stack.users.credit(USER, 100, "test")
         await stack.users.grant_plan(USER, kinds=["all"], days=30, notify=False)
         order = await stack.orders.create_order(
-            USER, "views", {"link": "https://t.me/c/3852827894/5", "quantity": 1000},
+            USER, "views", {"link": "https://t.me/c/800000007/5", "quantity": 1000},
             plan={"plan_id": "views_1k", "title": "1000 Views", "price": 79.0,
                   "quantity": 1000},
         )
@@ -429,38 +429,38 @@ class TestChannelReattribution:
     @pytest.mark.asyncio
     async def test_a_real_adder_replaces_a_guessed_owner(self):
         stack = await build_stack({})
-        guessed, real = 11110000, 22220000
-        await stack.channels.register(-100700700, guessed, title="Promo",
+        guessed, real = 800000008, 800000009
+        await stack.channels.register(-100800000002, guessed, title="Promo",
                                       owner_source="creator_guess")
-        assert (await stack.channels.get(-100700700))["owner_id"] == guessed
+        assert (await stack.channels.get(-100800000002))["owner_id"] == guessed
 
-        await stack.channels.register(-100700700, real, title="Promo",
+        await stack.channels.register(-100800000002, real, title="Promo",
                                       added_by=real, owner_source="added_by")
-        doc = await stack.channels.get(-100700700)
+        doc = await stack.channels.get(-100800000002)
         assert doc["owner_id"] == real, doc
 
     @pytest.mark.asyncio
     async def test_an_explicit_owner_is_never_stolen(self):
         stack = await build_stack({})
-        owner, stranger = 11110000, 22220000
-        await stack.channels.register(-100700700, owner, title="Promo",
+        owner, stranger = 800000008, 800000009
+        await stack.channels.register(-100800000002, owner, title="Promo",
                                       owner_source="added_by")
-        await stack.channels.register(-100700700, stranger, title="Promo",
+        await stack.channels.register(-100800000002, stranger, title="Promo",
                                       added_by=stranger, owner_source="added_by")
-        assert (await stack.channels.get(-100700700))["owner_id"] == owner
+        assert (await stack.channels.get(-100800000002))["owner_id"] == owner
 
         # ...unless an operator explicitly reassigns it.
-        await stack.channels.set_owner(-100700700, stranger)
-        doc = await stack.channels.get(-100700700)
+        await stack.channels.set_owner(-100800000002, stranger)
+        doc = await stack.channels.get(-100800000002)
         assert doc["owner_id"] == stranger
         assert stranger in (doc.get("sponsors") or [])
 
     @pytest.mark.asyncio
     async def test_set_owner_makes_the_new_owner_entitled(self):
         stack = await build_stack({})
-        await stack.channels.register(-100700700, 11110000, title="Promo")
-        await stack.channels.set_owner(-100700700, USER)
-        doc = await stack.channels.get(-100700700)
+        await stack.channels.register(-100800000002, 800000008, title="Promo")
+        await stack.channels.set_owner(-100800000002, USER)
+        doc = await stack.channels.get(-100800000002)
         assert USER in (doc.get("sponsors") or [])
         assert await stack.auto._entitled(doc, "views") is False
         await stack.users.grant_plan(USER, kinds=["views"], days=30, notify=False)
@@ -504,8 +504,8 @@ class TestSignInClientReuse:
 
         # ``_signin_client`` receives the sanitized session name (as the
         # handler does), and the same phone must reuse the same client.
-        first = await handler._signin_client("911234567890")
-        second = await handler._signin_client("911234567890")
+        first = await handler._signin_client("800000010")
+        second = await handler._signin_client("800000010")
 
         assert first is second, "the second attempt opened a second client on the same session file"
         assert len(created) == 1, created
@@ -545,8 +545,8 @@ class TestSignInClientReuse:
         tbot.client_manager = None
         handler = client_module.AccountHandler(tbot)
 
-        first = await handler._signin_client("911234567890")
-        second = await handler._signin_client("9999999999")
+        first = await handler._signin_client("800000010")
+        second = await handler._signin_client("800000011")
         await asyncio.sleep(0)          # let the cleanup task run
 
         assert second is not first
@@ -555,7 +555,7 @@ class TestSignInClientReuse:
 
 class TestProductionAttributionCase:
     """The exact production attribution bug: the channel belonged to one id
-    (7938842751) while another user (8707101133) held the paid plan — so views
+    (800000012) while another user (800000013) held the paid plan — so views
     were switched off for a channel somebody *had* paid for."""
 
     @pytest.mark.asyncio
@@ -566,33 +566,33 @@ class TestProductionAttributionCase:
                                          member_of={CH}),
         }
         stack = await build_stack(clients)
-        stranger, payer = 8707101133, 555000222
-        await stack.channels.register(-100700700, stranger, title="Promo",
+        stranger, payer = 800000013, 800000014
+        await stack.channels.register(-100800000002, stranger, title="Promo",
                                       invite_link="https://t.me/+inv")
         await stack.registry.sync_from_live_clients()
         await stack.settings.set_path("views.auto.enabled", True)
-        await stack.channels.set_auto_views(-100700700, True)
+        await stack.channels.set_auto_views(-100800000002, True)
 
         # Nobody entitled yet: the channel owner has no plan.
-        assert "views" not in await stack.auto.handle_new_post(-100700700, 20)
+        assert "views" not in await stack.auto.handle_new_post(-100800000002, 20)
 
         # The paying user gets a plan and orders views for that channel.
         await stack.users.credit(payer, 500, "test")
         await stack.users.grant_plan(payer, kinds=["views"], days=30, notify=False)
         order = await stack.orders.create_order(
             payer, "views",
-            {"channel_id": -100700700, "link": "https://t.me/c/700700/5", "views": 5},
+            {"channel_id": -100800000002, "link": "https://t.me/c/700700/5", "views": 5},
             plan={"plan_id": "views_1k", "title": "100 Views", "price": 0.0,
                   "quantity": 5},
         )
         await stack.executor.run(order["_id"])
 
-        doc = await stack.channels.get(-100700700)
+        doc = await stack.channels.get(-100800000002)
         assert payer in (doc.get("sponsors") or []), doc
         assert doc["owner_id"] == stranger, "the channel owner must not change"
 
         # Now the very next post gets views — without any manual toggle.
-        outcome = await stack.auto.handle_new_post(-100700700, 21)
+        outcome = await stack.auto.handle_new_post(-100800000002, 21)
         assert outcome.get("views", {}).get("ok", 0) >= 1, outcome
 
 
@@ -609,9 +609,9 @@ class TestAccountStatusHasOneSourceOfTruth:
         stack = await build_stack({})
         registry = get_account_registry(stack.registry.store)
         saved = await registry.store.save_signed_in(
-            None, "+919000000001", owner_id=USER,
+            None, "+15550000016", owner_id=USER,
             session_string="1BVtsOK4notreal", me=types.SimpleNamespace(
-                id=7001, username="banned_user", phone="+919000000001",
+                id=7001, username="banned_user", phone="+15550000017",
                 first_name="Banned", last_name="User"),
         )
         await registry.store.set_status(saved["_id"], "revoked", "banned by Telegram")
@@ -623,7 +623,7 @@ class TestAccountStatusHasOneSourceOfTruth:
         await manager.show_inactive_accounts(event)
 
         text = event.last_text or ""
-        assert "+919000000001" in text, text
+        assert "+15550000016" in text, text
         assert "banned" in text.lower(), text
         assert "inactive_accounts" not in config, "the legacy key must not be created"
 
@@ -635,16 +635,17 @@ class TestAccountStatusHasOneSourceOfTruth:
         stack = await build_stack({})
         registry = get_account_registry(stack.registry.store)
         saved = await registry.store.save_signed_in(
-            None, "+919000000002", session_string="1BVtsOK4notreal",
-            me=types.SimpleNamespace(id=7002, username="back", phone="+919000000002",
+            None, "+15550000019", session_string="1BVtsOK4notreal",
+            me=types.SimpleNamespace(id=7002, username="back", phone="+15550000020",
                                      first_name="Back", last_name="Again"),
         )
         await registry.store.set_status(saved["_id"], "revoked", "was banned")
 
-        config = {"clients": {"919000000002.session": {}},
-                  "inactive_accounts": {"919000000002": {"reason": "auth_error"}}}
+        session_name = saved["phone"].lstrip("+")
+        config = {"clients": {f"{session_name}.session": {}},
+                  "inactive_accounts": {session_name: {"reason": "auth_error"}}}
         manager = SessionManager(config, {}, stack.bot)
 
-        await manager._mark_active_in_registry("919000000002")
+        await manager._mark_active_in_registry(session_name)
         doc = await registry.store.get(saved["_id"])
         assert doc["status"] == "active", doc

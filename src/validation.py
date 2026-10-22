@@ -27,7 +27,7 @@ class InputValidator:
         
         # Check if starts with + and contains only digits
         if not re.match(r'^\+\d{10,15}$', phone):
-            return False, "Phone number must start with '+' and contain 10-15 digits (e.g., +1234567890)"
+            return False, "Phone number must start with '+' and contain 10-15 digits (e.g., +15550000004)"
         
         return True, None
     

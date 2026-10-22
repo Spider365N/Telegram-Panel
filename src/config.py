@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 class ConfigManager:
-    def __init__(self, filename: str = "clients.json", config: Optional[Dict[str, Any]] = None):
+    def __init__(self, filename: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the ConfigManager class.
         Handles loading, saving, and managing configuration settings.
@@ -19,11 +19,14 @@ class ConfigManager:
         :param config: Initial configuration dictionary (optional).
         """
         try:
-            # Store full path for file operations
-            self.filepath = filename
+            # The legacy client/settings JSON defaults to the configured data
+            # directory, so it remains writable in a read-only container.
+            # Explicit paths still win for tests and compatibility callers.
+            configured_path = filename or os.getenv("CLIENTS_JSON_PATH") or "clients.json"
+            self.filepath = os.fspath(os.path.expanduser(str(configured_path)))
             # Sanitize filename for display purposes only
             import re
-            sanitized = re.sub(r'[^\w\-_\.]', '', os.path.basename(filename))
+            sanitized = re.sub(r'[^\w\-_\.]', '', os.path.basename(self.filepath))
             if not sanitized.endswith('.json'):
                 sanitized = "config.json"
             self.filename = sanitized
@@ -155,8 +158,94 @@ class ConfigManager:
             logger.error(f"Error retrieving config key '{key}': {e}")
             return None
 
-# Load environment variables from .env file
+# Legacy .env support remains for local/hosted deployments, but the recommended
+# Docker/VPS deployment uses config/config.json mounted read-only into the
+# container. Process environment variables intentionally take precedence over
+# JSON values so deployment-specific values (Mongo hostname, data path, port)
+# can be safely fixed in Compose.
 load_dotenv()
+
+_CONFIG_ENV_KEYS = frozenset({
+    "API_ID", "API_HASH", "BOT_TOKEN", "BOT_SESSION_NAME",
+    "ADMIN_ID", "OWNER_ID", "ADMIN_IDS", "CHANNEL_ID",
+    "MONGODB_URI", "MONGO_URI", "MONGODB_URL", "MONGO_URL",
+    "MONGODB_DB", "MONGO_DB", "MONGO_DATABASE", "MONGOHOST", "MONGOPORT",
+    "MONGOUSER", "MONGOPASSWORD", "MONGO_HOST", "MONGO_PORT", "MONGO_USER",
+    "MONGO_PASSWORD", "STORAGE_BACKEND", "DATA_DIR", "CLIENTS_JSON_PATH",
+    "RATE_LIMIT_SLEEP", "GROUPS_BATCH_SIZE", "GROUPS_UPDATE_SLEEP",
+    "HTTP_PORT", "HTTPS_PORT", "TELEGRAM_PORT", "REPORT_CHECK_BOT",
+    "PORT", "HEALTH_PORT", "HEALTH_HOST", "WEB_ADMIN",
+    "ADMIN_PANEL_PASSWORD", "ADMIN_PANEL_SECRET", "SUPPORT_USERNAME",
+    "PAYMENT_UPI_ID", "PAYMENT_UPI_NAME", "CURRENCY",
+})
+
+
+def load_runtime_config_file(path: Optional[str] = None) -> bool:
+    """Read scalar deployment settings from JSON into ``os.environ``.
+
+    ``CONFIG_FILE`` may point to an explicit file. Without it, the standard
+    ``<project>/config/config.json`` is optional (so tests and legacy .env
+    installs still work). If an explicit file is missing or malformed, fail
+    immediately rather than silently starting with defaults and risking a
+    broken or non-persistent deployment.
+
+    JSON values only fill variables not already provided by the process
+    environment. Lists are accepted only for ``ADMIN_IDS`` and become a
+    comma-separated string.
+    """
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[1]
+    requested = path if path is not None else os.getenv("CONFIG_FILE")
+    explicit = bool(requested)
+    config_path = Path(requested).expanduser() if requested else project_root / "config" / "config.json"
+    if not config_path.is_absolute():
+        config_path = project_root / config_path
+
+    if not config_path.is_file():
+        if explicit:
+            raise FileNotFoundError(
+                f"Runtime config file not found: {config_path}. "
+                "Copy config.example.json to config/config.json and fill in the required values."
+            )
+        return False
+
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            values = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read runtime config file {config_path}: {exc}") from exc
+
+    if not isinstance(values, dict):
+        raise ValueError(f"Runtime config file must contain a JSON object: {config_path}")
+
+    unknown = sorted(set(values) - _CONFIG_ENV_KEYS)
+    if unknown:
+        raise ValueError(
+            "Unknown runtime config key(s): " + ", ".join(unknown) +
+            ". Use the uppercase keys listed in config.example.json."
+        )
+
+    for key, value in values.items():
+        if value is None:
+            rendered = ""
+        elif key == "ADMIN_IDS" and isinstance(value, (list, tuple)):
+            rendered = ",".join(str(item).strip() for item in value if str(item).strip())
+        elif isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, (str, int, float)):
+            rendered = str(value).strip()
+        else:
+            raise ValueError(f"Runtime config value {key!r} must be a string, number, boolean, or null")
+
+        if key not in os.environ or not str(os.environ.get(key) or "").strip():
+            os.environ[key] = rendered
+
+    logger.info("Loaded runtime configuration from %s", config_path)
+    return True
+
+
+CONFIG_FILE_LOADED = load_runtime_config_file()
 
 PLACEHOLDER_VALUES = {
     'x', '0', 'your_api_id_here', 'your_api_hash_here', 'your_bot_token_here',
@@ -198,6 +287,20 @@ def validate_env_file() -> None:
             "(get it from @userinfobot)"
         )
 
+    # The production JSON template is private and is the source of truth for the
+    # dashboard credentials. Refuse obvious placeholders/weak values rather
+    # than exposing the panel with a predictable password or signing key.
+    web_admin_enabled = (clean_env_value(os.getenv("WEB_ADMIN", "1") or "1") or "1").lower() not in {
+        "0", "off", "no", "false"
+    }
+    if CONFIG_FILE_LOADED and web_admin_enabled:
+        panel_password = str(clean_env_value(os.getenv("ADMIN_PANEL_PASSWORD") or "") or "")
+        if len(panel_password) < 16 or panel_password.lower().startswith(("replace_", "change_me")):
+            missing.append("  • ADMIN_PANEL_PASSWORD: set a unique password of at least 16 characters")
+        panel_secret = str(clean_env_value(os.getenv("ADMIN_PANEL_SECRET") or "") or "")
+        if len(panel_secret) < 32 or panel_secret.lower().startswith(("replace_", "change_me")):
+            missing.append("  • ADMIN_PANEL_SECRET: set a random secret of at least 32 characters")
+
     optional = {
         'CHANNEL_ID': 'Channel id/username for forwarding (optional)',
         'MONGODB_URI': 'MongoDB connection string (recommended, cloud-safe storage)',
@@ -217,9 +320,9 @@ def validate_env_file() -> None:
             "2. Add the variables listed above\n"
             "3. Redeploy\n"
             if on_platform else
-            "1. Copy env.example to .env: cp env.example .env\n"
-            "2. Fill in the values listed above\n"
-            "3. Restart the bot\n"
+            "1. Copy config.example.json to config/config.json: mkdir -p config && cp config.example.json config/config.json\n"
+            "2. Fill in the required JSON values, then restart the bot\n"
+            "Legacy installs may still use env.example/.env, but Docker/VPS should use config/config.json.\n"
         )
         error_msg = (
             "\n❌ Environment configuration error\n\n"
@@ -252,7 +355,7 @@ def clean_env_value(value: Any) -> Any:
     store values with quotes, padding whitespace or a stray line break, and all
     of those break naive parsing. Examples:
 
-        '"8707101133"'                  -> '8707101133'
+        '"800000001"'                  -> '800000001'
         '  mongodb+srv://u:p@c/?x=1\n'  -> 'mongodb+srv://u:p@c/?x=1'
         '""'                            -> ''
     """
@@ -316,7 +419,7 @@ API_ID = get_env_int('API_ID', default=0)
 API_HASH = get_env_variable('API_HASH', default='x')
 BOT_TOKEN = get_env_variable('BOT_TOKEN', default='x')
 CHANNEL_ID = get_env_variable('CHANNEL_ID', default='x')
-BOT_SESSION_NAME = get_env_variable('BOT_SESSION_NAME', default='BOT_SESSION')
+BOT_SESSION_NAME = get_env_variable('BOT_SESSION_NAME', default='bot2')
 def _first_id(*values: Any) -> int:
     """First usable numeric id among the given values (lists included)."""
     for value in values:

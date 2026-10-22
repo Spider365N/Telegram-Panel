@@ -141,9 +141,13 @@ from src.monitor import Monitor
 
 
 class TestConfigStore:
-    def test_configmanager_defaults_to_clients_json(self):
-        # CLI and bot must share the same store; default must not be config.json
-        assert ConfigManager.__init__.__defaults__[0] == "clients.json"
+    def test_configmanager_uses_configured_clients_path(self, monkeypatch, tmp_path):
+        # Bot, CLI and interactive CLI must store their client-state JSON in the
+        # persistent Docker volume when CLIENTS_JSON_PATH is configured.
+        configured = tmp_path / "persistent" / "clients.json"
+        monkeypatch.setenv("CLIENTS_JSON_PATH", str(configured))
+        manager = ConfigManager()
+        assert manager.filepath == str(configured)
 
     def test_save_config_is_atomic_and_leaves_no_temp(self, tmp_path):
         path = tmp_path / "clients.json"

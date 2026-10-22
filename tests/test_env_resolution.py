@@ -43,17 +43,17 @@ def reload_config(monkeypatch, env: dict):
     return importlib.reload(config_module)
 
 
-# The exact shape of the failing Railway deployment (secrets replaced).
+# A synthetic Railway-style environment fixture with non-working credentials.
 RAILWAY_DEPLOY = {
-    "API_ID": "25396020",
-    "API_HASH": "228ea638bed51dd4ae3cc9e4e51e198c",
-    "BOT_TOKEN": "8866247571:AAFQrdk3PPLwasB64rqitEGZwQULkiKjmjc",
-    "BOT_SESSION_NAME": "bot_session_reac",
-    "CHANNEL_ID": "-1003852827894",
-    "OWNER_ID": "8707101133",          # ← no ADMIN_ID anywhere
-    "ADMIN_IDS": "8707101133",
-    "MONGODB_URI": "mongodb+srv://user:pass@cluster0.licqd1.mongodb.net/",
-    "MONGODB_DB": "telegram_panel_rexn",
+    "API_ID": "12345678",
+    "API_HASH": "test_api_hash_not_real_0123456789",
+    "BOT_TOKEN": "123456789:TEST_TOKEN_NOT_REAL",
+    "BOT_SESSION_NAME": "test_bot_session",
+    "CHANNEL_ID": "-1001234567890",
+    "OWNER_ID": "123456789",          # synthetic test owner; ADMIN_ID is intentionally unset
+    "ADMIN_IDS": "123456789",
+    "MONGODB_URI": "mongodb+srv://test-user:test-password@sample.invalid/telegram_panel",
+    "MONGODB_DB": "telegram_panel_test",
     "STORAGE_BACKEND": "auto",
     "HEALTH_PORT": "",
     "HEALTH_HOST": "0.0.0.0",
@@ -66,9 +66,9 @@ class TestOwnerResolution:
     def test_owner_id_alone_is_enough(self, monkeypatch):
         """The reproduction case: OWNER_ID set, ADMIN_ID missing."""
         cfg = reload_config(monkeypatch, RAILWAY_DEPLOY)
-        assert cfg.ADMIN_ID == 8707101133
-        assert cfg.OWNER_ID == 8707101133
-        assert cfg.ADMIN_IDS == [8707101133]
+        assert cfg.ADMIN_ID == 123456789
+        assert cfg.OWNER_ID == 123456789
+        assert cfg.ADMIN_IDS == [123456789]
         cfg.validate_env_file()          # must not raise
 
     def test_admin_id_alone_also_works(self, monkeypatch):
@@ -122,11 +122,13 @@ class TestValidation:
         assert "Variables" in str(exc.value)
         assert "cp env.example .env" not in str(exc.value)
 
-    def test_self_hosted_message_points_at_dotenv(self, monkeypatch):
+    def test_self_hosted_message_points_at_json_config(self, monkeypatch):
         cfg = reload_config(monkeypatch, {})
         with pytest.raises(ValueError) as exc:
             cfg.validate_env_file()
-        assert "cp env.example .env" in str(exc.value)
+        message = str(exc.value)
+        assert "config.example.json" in message
+        assert "config/config.json" in message
 
     def test_placeholders_are_treated_as_missing(self, monkeypatch):
         cfg = reload_config(monkeypatch, {
@@ -146,10 +148,10 @@ class TestQuotedValues:
     def test_numbers_strip_quotes_and_spaces(self, monkeypatch):
         cfg = reload_config(monkeypatch, {
             **RAILWAY_DEPLOY,
-            "ADMIN_IDS": ' "8707101133, 999" ',
+            "ADMIN_IDS": ' "123456789, 999" ',
             "HEALTH_PORT": '"9090"',
         })
-        assert cfg.ADMIN_IDS == [999, 8707101133]
+        assert cfg.ADMIN_IDS == [999, 123456789]
         assert cfg.HEALTH_PORT == 9090
 
     def test_empty_string_quotes_mean_unset(self, monkeypatch):
@@ -168,7 +170,7 @@ class TestQuotedValues:
         assert cfg.MONGODB_URI.startswith("mongodb+srv://u:p@c.mongodb.net/")
         assert '"' not in cfg.MONGODB_URI
         assert "\n" not in cfg.MONGODB_URI
-        assert cfg.MONGODB_DB == "telegram_panel_rexn"
+        assert cfg.MONGODB_DB == "telegram_panel_test"
 
     def test_database_from_quoted_uri(self, monkeypatch):
         cfg = reload_config(monkeypatch, {

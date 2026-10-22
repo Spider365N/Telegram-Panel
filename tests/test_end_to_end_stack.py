@@ -357,7 +357,7 @@ class TestSessionExport:
         client = FakeTelegramClient("phoneX", user_id=5150)
         client._me = type("Me", (), {
             "id": 5150, "username": "kaka", "first_name": "Kaka", "last_name": "S",
-            "phone": "+919999999999",
+            "phone": "+15550000007",
         })()
         doc_id = await stack.registry.register("phoneX", client, owner_id=42)
         doc = await stack.store.find_one("accounts", {"_id": doc_id})

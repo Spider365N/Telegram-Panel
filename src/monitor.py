@@ -28,6 +28,7 @@ class Monitor:
         self.tbot = tbot
         self.channel_id = None  # Numeric channel ID
         self.channel_username = None  # Channel username (if applicable)
+        self._missing_channel_warned = False
 
     async def resolve_channel_id(self) -> None:
         """
@@ -41,7 +42,9 @@ class Monitor:
 
         # Check if CHANNEL_ID is set and valid
         if not CHANNEL_ID or CHANNEL_ID in ['x', 'your_channel_id_or_username', '0']:
-            logger.warning("CHANNEL_ID is not configured. Message forwarding will be disabled.")
+            if not self._missing_channel_warned:
+                logger.warning("CHANNEL_ID is not configured. Message forwarding will be disabled.")
+                self._missing_channel_warned = True
             return
 
         # Numeric IDs (including the -100... supergroup/channel form) parse via int().
@@ -92,7 +95,6 @@ class Monitor:
         await self.resolve_channel_id()
 
         if self.channel_id is None:
-            logger.warning("CHANNEL_ID not configured. Message forwarding is disabled.")
             return
 
         # Captured so the closure does not reach back through self.

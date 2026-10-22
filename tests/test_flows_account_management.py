@@ -22,7 +22,7 @@ class TestAccountManagementFlows:
         assert mock_tbot._conversations.get(mock_callback_event.chat_id) == 'phone_number_handler'
         
         # Step 2: User sends phone number
-        mock_event.message.text = "+1234567890"
+        mock_event.message.text = "+15550000004"
         mock_event.chat_id = mock_callback_event.chat_id
         mock_tbot.handlers = {}
         
@@ -46,7 +46,7 @@ class TestAccountManagementFlows:
             # Step 3: User sends verification code
             mock_event.message.text = "12345"
             mock_tbot.handlers['temp_client'] = mock_client
-            mock_tbot.handlers['temp_phone'] = "+1234567890"
+            mock_tbot.handlers['temp_phone'] = "+15550000004"
             
             # Mock successful sign in (no password needed)
             mock_client.sign_in = AsyncMock()
@@ -73,7 +73,7 @@ class TestAccountManagementFlows:
         mock_request = MagicMock()
         mock_client.sign_in = AsyncMock(side_effect=SessionPasswordNeededError(mock_request))
         mock_tbot.handlers['temp_client'] = mock_client
-        mock_tbot.handlers['temp_phone'] = "+1234567890"
+        mock_tbot.handlers['temp_phone'] = "+15550000004"
         
         account_handler = AccountHandler(mock_tbot)
         account_handler.tbot.tbot.send_message = AsyncMock()
@@ -251,9 +251,10 @@ class TestAccountManagementFlows:
         mock_tbot.handlers = {}
         
         mock_client = AsyncMock()
+        mock_client.is_connected = MagicMock(return_value=True)
         mock_client.sign_in = AsyncMock(side_effect=Exception("Invalid code"))
         mock_tbot.handlers['temp_client'] = mock_client
-        mock_tbot.handlers['temp_phone'] = "+1234567890"
+        mock_tbot.handlers['temp_phone'] = "+15550000004"
         
         account_handler = AccountHandler(mock_tbot)
         account_handler.tbot.tbot.send_message = AsyncMock()

@@ -176,7 +176,7 @@ class TestSessionManager:
             "clients": {},
             "inactive_accounts": {
                 "session1": {
-                    "phone": "+1234567890",
+                    "phone": "+15550000004",
                     "reason": "auth_error",
                     "last_seen": time.time(),
                     "error_details": "Session revoked"
@@ -189,13 +189,13 @@ class TestSessionManager:
         
         mock_event.respond.assert_called_once()
         response = mock_event.respond.call_args[0][0]
-        assert "session1" in response or "+1234567890" in response
+        assert "session1" in response or "+15550000004" in response
     
     async def test_reactivate_account_success(self, mock_tbot, mock_event, mock_telegram_client):
         """Test reactivating an inactive account"""
         config = {
             "clients": {},
-            "inactive_accounts": {"session1": {"phone": "+1234567890", "reason": "auth_error"}}
+            "inactive_accounts": {"session1": {"phone": "+15550000004", "reason": "auth_error"}}
         }
         manager = SessionManager(config, mock_tbot.active_clients, mock_tbot.tbot)
         
@@ -215,7 +215,7 @@ class TestSessionManager:
         """Test reactivating account that fails"""
         config = {
             "clients": {},
-            "inactive_accounts": {"session1": {"phone": "+1234567890", "reason": "auth_error"}}
+            "inactive_accounts": {"session1": {"phone": "+15550000004", "reason": "auth_error"}}
         }
         manager = SessionManager(config, mock_tbot.active_clients, mock_tbot.tbot)
         
@@ -253,7 +253,7 @@ class TestAccountHandler:
     async def test_phone_number_handler_valid(self, mock_tbot, mock_event, mock_telegram_client):
         """Test phone number handler with valid number"""
         handler = AccountHandler(mock_tbot)
-        mock_event.message.text = "+1234567890"
+        mock_event.message.text = "+15550000004"
         mock_event.chat_id = 123
         
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=False)
@@ -261,11 +261,11 @@ class TestAccountHandler:
         mock_tbot.tbot.send_message = AsyncMock()
         
         with patch('src.client.TelegramClient', return_value=mock_telegram_client):
-            with patch('src.client.sanitize_session_name', return_value="+1234567890"):
+            with patch('src.client.sanitize_session_name', return_value="+15550000004"):
                 await handler.phone_number_handler(mock_event)
                 
                 assert mock_tbot.handlers.get('temp_client') is not None
-                assert mock_tbot.handlers.get('temp_phone') == "+1234567890"
+                assert mock_tbot.handlers.get('temp_phone') == "+15550000004"
                 mock_telegram_client.send_code_request.assert_called_once()
     
     async def test_phone_number_handler_invalid(self, mock_tbot, mock_event):
@@ -287,14 +287,14 @@ class TestAccountHandler:
     async def test_phone_number_handler_already_authorized(self, mock_tbot, mock_event, mock_telegram_client):
         """Test phone number handler when already authorized"""
         handler = AccountHandler(mock_tbot)
-        mock_event.message.text = "+1234567890"
+        mock_event.message.text = "+15550000004"
         mock_event.chat_id = 123
         
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=True)
         mock_telegram_client.get_me = AsyncMock(return_value=Mock(id=123, first_name="Test", username="test"))
         
         with patch('src.client.TelegramClient', return_value=mock_telegram_client):
-            with patch('src.client.sanitize_session_name', return_value="+1234567890"):
+            with patch('src.client.sanitize_session_name', return_value="+15550000004"):
                 with patch.object(handler, 'finalize_client_setup', new_callable=AsyncMock):
                     await handler.phone_number_handler(mock_event)
                     
@@ -308,7 +308,7 @@ class TestAccountHandler:
         
         mock_tbot.handlers = {
             'temp_client': mock_telegram_client,
-            'temp_phone': "+1234567890"
+            'temp_phone': "+15550000004"
         }
         mock_telegram_client.sign_in = AsyncMock()
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=True)
@@ -331,7 +331,7 @@ class TestAccountHandler:
         
         mock_tbot.handlers = {
             'temp_client': mock_telegram_client,
-            'temp_phone': "+1234567890"
+            'temp_phone': "+15550000004"
         }
         from unittest.mock import Mock
         mock_telegram_client.sign_in = AsyncMock(side_effect=SessionPasswordNeededError(Mock()))
@@ -351,7 +351,7 @@ class TestAccountHandler:
         
         mock_tbot.handlers = {
             'temp_client': mock_telegram_client,
-            'temp_phone': "+1234567890"
+            'temp_phone': "+15550000004"
         }
         flood_error = FloodWaitError(Mock())
         flood_error.seconds = 60
@@ -364,7 +364,7 @@ class TestAccountHandler:
         # Round 6: a FloodWait must NOT throw the sign-in away — the client and
         # the phone stay in place so the user can simply send the code again.
         assert mock_tbot.handlers.get('temp_client') is mock_telegram_client
-        assert mock_tbot.handlers.get('temp_phone') == "+1234567890"
+        assert mock_tbot.handlers.get('temp_phone') == "+15550000004"
         assert any("wait" in str(call).lower()
                    for call in mock_tbot.tbot.send_message.call_args_list)
     
@@ -376,7 +376,7 @@ class TestAccountHandler:
         
         mock_tbot.handlers = {
             'temp_client': mock_telegram_client,
-            'temp_phone': "+1234567890"
+            'temp_phone': "+15550000004"
         }
         mock_telegram_client.sign_in = AsyncMock()
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=True)
@@ -408,11 +408,11 @@ class TestAccountHandler:
         mock_tbot.monitor.process_messages_for_client = AsyncMock()
         mock_tbot.tbot.send_message = AsyncMock()
         
-        with patch('src.client.sanitize_session_name', return_value="+1234567890"):
-            await handler.finalize_client_setup(mock_telegram_client, "+1234567890", 123)
+        with patch('src.client.sanitize_session_name', return_value="+15550000004"):
+            await handler.finalize_client_setup(mock_telegram_client, "+15550000004", 123)
             
-            assert "+1234567890" in mock_tbot.active_clients
-            assert "+1234567890" in mock_tbot.config["clients"]
+            assert "+15550000004" in mock_tbot.active_clients
+            assert "+15550000004" in mock_tbot.config["clients"]
             mock_tbot.tbot.send_message.assert_called()
     
     async def test_finalize_client_setup_not_authorized(self, mock_tbot, mock_event, mock_telegram_client):
@@ -423,7 +423,7 @@ class TestAccountHandler:
         mock_telegram_client.is_user_authorized = AsyncMock(return_value=False)
         mock_tbot.tbot.send_message = AsyncMock()
         
-        await handler.finalize_client_setup(mock_telegram_client, "+1234567890", 123)
+        await handler.finalize_client_setup(mock_telegram_client, "+15550000004", 123)
         
         mock_tbot.tbot.send_message.assert_called()
         assert 'temp_client' not in mock_tbot.handlers
@@ -433,7 +433,7 @@ class TestAccountHandler:
         handler = AccountHandler(mock_tbot)
         mock_tbot.handlers = {
             'temp_client': Mock(),
-            'temp_phone': "+1234567890",
+            'temp_phone': "+15550000004",
             'other_key': "value"
         }
         

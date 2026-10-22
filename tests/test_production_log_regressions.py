@@ -3,9 +3,9 @@
 The log (Railway, 2026-10-15) showed:
 
     [ERROR] Could not read settings from store: name 'get_store_sync' is not defined
-    [INFO]  Channel registered: -1003852827894 (Logs Test) owner=None
-    [INFO]  Bot added to chat -1003852827894 by None
-    [INFO]  Auto reactions on -1003852827894/28: 0 ok, 0 failed (credits left: -1)
+    [INFO]  Channel registered: -100800000001 (Logs Test) owner=None
+    [INFO]  Bot added to chat -100800000001 by None
+    [INFO]  Auto reactions on -100800000001/28: 0 ok, 0 failed (credits left: -1)
 
 …i.e. settings never came from the database, a channel added by a user (whose id
 Telegram did not report) stayed invisible in the panel, and automation reported a
@@ -25,7 +25,7 @@ from tests.fakes import (
     make_channel,
 )
 
-CHANNEL = 3852827894          # the channel id from the production log
+CHANNEL = 800000001          # the channel id from the production log
 INTERNAL = int(f"-100{CHANNEL}")
 
 
@@ -217,7 +217,7 @@ class TestUnownedChannelIsVisible:
     @pytest.mark.asyncio
     async def test_regular_user_still_only_sees_their_own(self, stack):
         await stack.channels.register(INTERNAL, None, title="Logs Test")
-        mine = -100555777
+        mine = -100800000002
         await stack.channels.register(mine, 616161, title="My own channel")
 
         event = FakeEvent(sender_id=616161, chat_id=616161, data="u:ch")
@@ -313,7 +313,7 @@ class TestOwnerCommandScope:
                 return True
 
         client = Client(resolvable=True)
-        result = await register_commands(client, owner_id=8707101133)
+        result = await register_commands(client, owner_id=800000006)
         assert result["owner"] is True
         assert "BotCommandScopePeerUser" in client.scopes
 
@@ -333,7 +333,7 @@ class TestOwnerCommandScope:
                 return True
 
         client = Client()
-        result = await register_commands(client, owner_id=8707101133)
+        result = await register_commands(client, owner_id=800000006)
         assert result["user"] is True and result["admin"] is True
         assert result["owner"] is False          # menu only; nothing breaks
         assert "BotCommandScopePeerUser" not in client.scopes
@@ -403,7 +403,7 @@ class TestFullJourneyFromTheLog:
         import src.telbot as telbot_module
         from tests.fakes import FakeTelegramClient as FTC
 
-        admin = 8707101133            # the owner id from the deployment
+        admin = 800000006            # the owner id from the deployment
         monkeypatch.setattr(config_module, "OWNER_ID", admin, raising=False)
         monkeypatch.setattr(config_module, "ADMIN_ID", admin, raising=False)
 
@@ -460,7 +460,7 @@ class TestFullJourneyFromTheLog:
             for i in range(6)
         })
         await stack.registry.sync_from_live_clients()
-        await stack.channels.register(INTERNAL, 8707101000, title="Logs Test")
+        await stack.channels.register(INTERNAL, 800000007, title="Logs Test")
         await stack.auto.enable_free_plan(INTERNAL)
         outcome = await stack.auto.handle_new_post(INTERNAL, 1)
         assert outcome["reactions"]["ok"] == 3, outcome
@@ -474,7 +474,7 @@ class TestInviteLinkRecovery:
     async def test_invite_is_retried_on_a_later_post(self, stack, monkeypatch):
         import src.telbot as telbot_module
 
-        internal = -100777111222
+        internal = -100800000003
         await stack.channels.register(internal, 555001, title="Private channel")
         assert not (await stack.channels.get(internal)).get("invite_link")
 
@@ -489,11 +489,11 @@ class TestInviteLinkRecovery:
 
         monkeypatch.setattr(telbot_module.TelegramBot, "_export_invite", staticmethod(fake_export))
 
-        channel = make_channel(777111222, title="Private channel")
+        channel = make_channel(800000003, title="Private channel")
         channel.username = None
         await bot._refresh_invite_if_missing(internal, channel)
 
-        assert calls == [777111222]
+        assert calls == [800000003]
         doc = await stack.channels.get(internal)
         assert doc["invite_link"] == "https://t.me/+freshInvite"
 
@@ -501,7 +501,7 @@ class TestInviteLinkRecovery:
     async def test_public_channels_are_left_alone(self, stack, monkeypatch):
         import src.telbot as telbot_module
 
-        internal = -100777111333
+        internal = -100800000004
         await stack.channels.register(internal, 555002, title="Public channel")
 
         called = []
@@ -514,7 +514,7 @@ class TestInviteLinkRecovery:
         bot = telbot_module.TelegramBot.__new__(telbot_module.TelegramBot)
         bot.tbot = stack.bot.tbot
 
-        channel = make_channel(777111333, title="Public channel")
+        channel = make_channel(800000004, title="Public channel")
         channel.username = "public_channel"
         await bot._refresh_invite_if_missing(internal, channel)
         assert called == []
@@ -523,7 +523,7 @@ class TestInviteLinkRecovery:
     async def test_existing_links_are_not_replaced(self, stack, monkeypatch):
         import src.telbot as telbot_module
 
-        internal = -100777111444
+        internal = -100800000005
         await stack.channels.register(internal, 555003, title="Already linked",
                                       invite_link="https://t.me/+original")
         called = []
@@ -535,7 +535,7 @@ class TestInviteLinkRecovery:
         monkeypatch.setattr(telbot_module.TelegramBot, "_export_invite", staticmethod(fake_export))
         bot = telbot_module.TelegramBot.__new__(telbot_module.TelegramBot)
         bot.tbot = stack.bot.tbot
-        channel = make_channel(777111444, title="Already linked")
+        channel = make_channel(800000005, title="Already linked")
         channel.username = None
         await bot._refresh_invite_if_missing(internal, channel)
         assert called == []

@@ -16,7 +16,7 @@ from src.config import ConfigManager, API_ID, API_HASH, CLIENTS_JSON_PATH
 from src.actions import Actions
 from src.client import SessionManager
 from src.validation import InputValidator
-from src.utils import get_session_name, sanitize_session_name
+from src.utils import get_session_name, get_safe_session_file_path, sanitize_session_name
 from src.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class CLIManager:
                 return False
             
             # Create client
-            client = TelegramClient(session_name, API_ID, API_HASH)
+            client = TelegramClient(get_safe_session_file_path(session_name), API_ID, API_HASH)
             
             print(f"Connecting to Telegram for {phone_number}...")
             await client.connect()

@@ -64,7 +64,8 @@ class ChannelService:
             "username": username,
             "invite_link": invite_link,
             "kind": kind,
-            "added_by": added_by,
+            "added_by": int(added_by) if added_by is not None else None,
+            "added_by_source": (owner_source or "added_by") if added_by is not None else None,
             "auto_reactions": {
                 "enabled": False,
                 "accounts": 0,          # 0 = use plan default
@@ -80,7 +81,7 @@ class ChannelService:
             # deleted by that user, so the free allowance cannot be farmed by
             # removing a channel and adding another one instead.
             "locked": True,
-            "added_by_user": bool(owner_id),
+            "added_by_user": bool(owner_id or added_by),
             "sponsors": [],
             "stats": {"posts_seen": 0, "reactions_sent": 0, "views_sent": 0,
                       "comments_sent": 0},
@@ -121,6 +122,24 @@ class ChannelService:
                     f"Channel {channel_id} re-attributed: {stored_owner} → {new_owner} "
                     f"({updates['owner_source']})"
                 )
+        # ``owner_id`` and ``added_by`` are deliberately separate: Telegram may
+        # identify the channel creator as owner while another user is the one
+        # who linked the bot. The old update path never persisted added_by for
+        # an existing channel, so a plan granted to that manager was invisible
+        # to the per-channel entitlement check.
+        if added_by is not None:
+            new_adder = int(added_by)
+            stored_adder = existing.get("added_by")
+            adder_source = str(
+                existing.get("added_by_source") or existing.get("owner_source") or ""
+            )
+            guessed_adder = adder_source in ("creator_guess", "only_admin", "creator", "guess", "")
+            if not stored_adder or guessed_adder or reassign:
+                updates["added_by"] = new_adder
+                updates["added_by_source"] = owner_source or (
+                    "reassign" if reassign else "added_by"
+                )
+                updates["added_by_user"] = True
         await self.store.update_one(COLL_CHANNELS, {"_id": channel_id}, {"$set": updates})
         existing.update(updates)
         logger.info(f"Channel updated: {channel_id} ({updates.get('title')})")
@@ -139,6 +158,35 @@ class ChannelService:
             message_id = int(message_id)
         except (TypeError, ValueError):
             return True
+        # Compare-and-set against the value we read. Telegram can deliver the
+        # same channel update through multiple handlers, and Mongo's async
+        # callbacks can overlap; a plain read then unconditional write lets both
+        # handlers claim the same post. The equality predicate makes the claim
+        # atomic on Mongo and on the lock-backed JSON/memory stores.
+        for _ in range(5):
+            doc = await self.get(channel_id)
+            if doc is None:
+                return True
+            previous = doc.get("last_post_id")
+            try:
+                seen = int(previous or 0)
+            except (TypeError, ValueError):
+                seen = 0
+            if message_id <= seen:
+                logger.info(
+                    f"Skipping post {message_id} on {channel_id} — already handled "
+                    f"(last seen {seen})"
+                )
+                return False
+            updated = await self.store.update_one(
+                COLL_CHANNELS,
+                {"_id": channel_id, "last_post_id": previous},
+                {"$set": {"last_post_id": message_id, "updated_at": _now_iso()}},
+            )
+            if updated:
+                return True
+        # Heavy contention: re-read once so an already claimed post is never
+        # processed twice. A later post will advance the marker normally.
         doc = await self.get(channel_id)
         if doc is None:
             return True
@@ -149,11 +197,8 @@ class ChannelService:
                 f"(last seen {seen})"
             )
             return False
-        await self.store.update_one(
-            COLL_CHANNELS, {"_id": channel_id},
-            {"$set": {"last_post_id": message_id, "updated_at": _now_iso()}},
-        )
-        return True
+        logger.warning(f"Could not atomically claim post {message_id} on {channel_id}")
+        return False
 
     async def get(self, channel_id: int) -> Optional[Dict[str, Any]]:
         return await self.store.find_one(COLL_CHANNELS, {"_id": int(channel_id)})
@@ -250,6 +295,7 @@ class ChannelService:
         }
         if not keep_sponsors:
             updates["added_by"] = owner_id
+            updates["added_by_source"] = source
             updates["sponsors"] = [owner_id]
             if existing.get("owner_id") and int(existing["owner_id"]) != owner_id:
                 updates["previous_owner"] = int(existing["owner_id"])
@@ -352,14 +398,19 @@ class ChannelService:
 
     async def add_sponsor(self, channel_id: int, user_id: int) -> Dict[str, Any]:
         """Remember who paid for / manages this channel (plan entitlement)."""
+        channel_id, user_id = int(channel_id), int(user_id)
         doc = await self.get(channel_id) or {}
-        sponsors = [int(s) for s in (doc.get("sponsors") or []) if str(s).lstrip("-").isdigit()]
-        if int(user_id) in sponsors:
+        if user_id <= 0 or not doc:
             return doc
-        sponsors.append(int(user_id))
+        sponsors = [int(s) for s in (doc.get("sponsors") or []) if str(s).lstrip("-").isdigit()]
+        if user_id in sponsors:
+            return doc
+        # Atomic set insertion prevents concurrent orders from overwriting each
+        # other's sponsor association on this shared channel document.
         await self.store.update_one(
-            COLL_CHANNELS, {"_id": int(channel_id)},
-            {"$set": {"sponsors": sponsors, "updated_at": _now_iso()}},
+            COLL_CHANNELS, {"_id": channel_id},
+            {"$addToSet": {"sponsors": user_id},
+             "$set": {"updated_at": _now_iso()}},
         )
         logger.info(f"Channel {channel_id}: {user_id} registered as a sponsor")
         return await self.get(channel_id) or {}

@@ -5,7 +5,7 @@ One MongoDB document per Telegram user (``users/_id=<user_id>``) so nothing is
 lost on restart:
 
     {
-      _id: 8707101133,
+      _id: 800000001,
       username: "kaka",
       first_name: "Kaka",
       role: "user" | "admin" | "owner",
@@ -418,33 +418,54 @@ class UserService:
             lines.append(f"Accounts allowed: <b>{int(accounts)}</b>")
         return "\n".join(lines)
 
-    async def _notify_plan_activated(self, user_id: int, plan: Dict[str, Any]) -> None:
-        """Tell the user their plan is live (details + duration)."""
+    async def _notify_plan_activated(
+        self, user_id: int, plan: Dict[str, Any], *, linked_channels: Optional[int] = None,
+    ) -> None:
+        """Tell the user their plan is live and whether automation is linked."""
         try:
             from src.services.notify import get_notifier
             from telethon import Button
 
             summary = await self.plan_summary(plan)
+            kinds = {str(kind).lower() for kind in (plan.get("kinds") or [])}
+            if plan.get("unlimited") or plan.get("type") == "unlimited":
+                kinds.add("all")
+            automations = [
+                label for kind, label in (("views", "auto views"), ("comments", "auto comments"))
+                if "all" in kinds or kind in kinds
+            ]
             text = (
                 "🎉 <b>Your plan is now active!</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 <code>{int(user_id)}</code>\n{summary}\n\n"
-                "Every service your plan covers is unlocked — the orders run "
-                "without an extra payment, and auto views/comments start on the "
-                "next post of your channels."
+                "Every service your plan covers is unlocked — covered orders run "
+                "without an extra payment."
             )
+            if automations and linked_channels == 0:
+                text += (
+                    "\n\n⚠️ No channel is linked to this account yet. Automatic "
+                    f"{', '.join(automations)} only run on channels linked to the "
+                    "plan holder as owner, original adder, or sponsor. Ask an operator "
+                    "to check the channel assignment in Admin Dashboard → Channels."
+                )
+            elif automations:
+                text += (
+                    f"\n\nAutomatic {', '.join(automations)} will run on the next "
+                    "new post in channels linked to your account."
+                )
             buttons = [[Button.inline("🏠 Open panel", "u:home", style="success")]]
             await get_notifier().to_user(int(user_id), text, buttons=buttons)
         except Exception as exc:  # noqa: BLE001 - a notice must never break a grant
-            logger.debug(f"plan notice failed for {user_id}: {exc}")
+            logger.debug(f"plan notice failed for {user_id}: {type(exc).__name__}")
 
-    async def _after_plan_change(self, user_id: int) -> None:
+    async def _after_plan_change(self, user_id: int) -> Dict[str, Any]:
         """Re-enable plan-based automation for the channels of this user."""
         try:
             from src.services.autoengage import get_auto_engagement
-            await get_auto_engagement().refresh_automation_for_user(int(user_id))
+            return await get_auto_engagement().refresh_automation_for_user(int(user_id))
         except Exception as exc:  # noqa: BLE001 - hook only
-            logger.debug(f"plan automation hook failed for {user_id}: {exc}")
+            logger.debug(f"plan automation hook failed for {user_id}: {type(exc).__name__}")
+            return {"channels": None, "views": 0, "comments": 0}
 
     async def grant_plan(
         self,
@@ -496,12 +517,14 @@ class UserService:
             f"Plan granted to {user_id}: "
             f"{'unlimited' if unlimited else '+'.join(wanted) + f' for {days}d'}"
         )
-        # One notification for every path (admin panel, /grant, wallet purchase)
-        # so the user always learns what went live and for how long, and the
-        # channels that belong to them have their automation re-checked.
+        # Re-check channel links before notifying the user. A plan holder can
+        # only unlock channels explicitly linked to that same account; never
+        # guess across tenants when Telegram hid who added the bot.
+        outcome = await self._after_plan_change(user_id)
         if notify:
-            await self._notify_plan_activated(user_id, dict(plan))
-        await self._after_plan_change(user_id)
+            await self._notify_plan_activated(
+                user_id, dict(plan), linked_channels=outcome.get("channels")
+            )
         return plan
 
     async def grant_premium(

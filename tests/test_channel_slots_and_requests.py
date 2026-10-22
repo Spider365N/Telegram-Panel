@@ -296,7 +296,7 @@ async def test_admin_can_approve_with_a_custom_duration():
 # ---------------------------------------------------------------------------
 # polls removed / formatting / one Auto Reactions button
 # ---------------------------------------------------------------------------
-def test_polls_are_gone_from_the_whole_bot():
+async def test_polls_are_gone_from_the_whole_bot():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "src"

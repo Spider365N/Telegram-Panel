@@ -16,7 +16,7 @@ The old code did ``chat = getattr(result, "chat", None)`` and only sent
 matters (an account that is not inside yet) the import was never sent, ``join()``
 returned ``None`` and every reaction failed with:
 
-    Could not resolve chat -1003852827894 for this account (private channel …)
+    Could not resolve chat -100800000001 for this account (private channel …)
 
 These tests model Telegram's real answer shapes (see ``tests/fakes.py``) and
 prove accounts actually get inside.
@@ -27,7 +27,7 @@ import pytest
 
 from tests.fakes import FakeTelegramClient, FakeEvent, build_stack, make_channel
 
-OWNER = 123456789
+OWNER = 800000002
 USER = 4242
 CHANNEL_ID = 810001
 INTERNAL = int(f"-100{CHANNEL_ID}")
@@ -230,7 +230,7 @@ class TestSelfHealingAndInputValidation:
 
 @pytest.mark.asyncio
 class TestAttributionWhenTelegramHidesTheAdder:
-    """The production log: `Bot added to chat -1003852827894 by unknown`."""
+    """The production log: `Bot added to chat -100800000001 by unknown`."""
 
     async def _add_event(self, stack, channel, owner_id_seen=None):
         from src.telbot import TelegramBot

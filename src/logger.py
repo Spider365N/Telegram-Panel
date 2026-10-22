@@ -1,5 +1,6 @@
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -30,7 +31,9 @@ def setup_logging(log_filename: str = "bot.log") -> None:
     
     handlers = []
     try:
-        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+        handlers.append(RotatingFileHandler(
+            log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+        ))
     except OSError as exc:  # read-only filesystem (some hosts) — stdout is enough
         logging.getLogger(__name__).warning(f"File logging disabled: {exc}")
     try:

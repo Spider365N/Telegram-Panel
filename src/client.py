@@ -56,7 +56,7 @@ class SessionManager:
             self.active_clients = active_clients
             self.tbot = tbot
             # Use ConfigManager to manage client configurations
-            self.config_manager = ConfigManager("clients.json", self.config)
+            self.config_manager = ConfigManager(CLIENTS_JSON_PATH, self.config)
             logger.info("SessionManager initialized successfully.")
         except Exception as e:
             logger.critical(f"Error initializing SessionManager: {e}")
@@ -89,7 +89,8 @@ class SessionManager:
                             continue
                         
                         # Initialize Telegram client for the session
-                        client = TelegramClient(sanitized_name, API_ID, API_HASH)
+                        session_path = get_safe_session_file_path(sanitized_name)
+                        client = TelegramClient(session_path, API_ID, API_HASH)
                         self.active_clients[sanitized_name] = client
                         # Update config key if sanitized name differs
                         if sanitized_name != session_name:
@@ -360,7 +361,7 @@ class SessionManager:
                         await event.respond(f"Invalid phone number format.")
                         return
                     
-                    client = TelegramClient(sanitized_phone, API_ID, API_HASH)
+                    client = TelegramClient(session_file, API_ID, API_HASH)
 
                     # Try to connect and authorize
                     await client.connect()
@@ -580,8 +581,8 @@ class AccountHandler:
             existing = None
         stored_phone = ""
         try:
-            # Compare the *sanitized* phone: the raw text ("+17209738889") and the
-            # session name ("17209738889") used to look different, so the second
+            # Compare the *sanitized* phone: the raw text ("+15550000005") and the
+            # session name ("15550000005") used to look different, so the second
             # attempt opened a second client on the same .session file — that is
             # exactly where the production "sqlite3.OperationalError: database is
             # locked" came from.
@@ -617,7 +618,8 @@ class AccountHandler:
             pass
 
         logger.info(f"PHONE_NUMBER_HANDLER: Creating client for {sanitized_phone}")
-        client = TelegramClient(sanitized_phone, API_ID, API_HASH)
+        session_path = get_safe_session_file_path(sanitized_phone)
+        client = TelegramClient(session_path, API_ID, API_HASH)
         await client.connect()
         try:
             # Remember which phone this client belongs to *now*, so a retry from
@@ -1508,7 +1510,7 @@ class AccountHandler:
             logger.error(f"Session file {session_file} not found")
             return
 
-        client = TelegramClient(session, API_ID, API_HASH)
+        client = TelegramClient(session_file, API_ID, API_HASH)
         try:
             await client.connect()
             if await client.is_user_authorized():

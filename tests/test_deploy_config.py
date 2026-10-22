@@ -223,6 +223,30 @@ class TestHealthEndpoint:
         assert "Telegram Panel is running" in text
 
     @pytest.mark.asyncio
+    async def test_web_admin_false_disables_panel_routes(self, monkeypatch):
+        import aiohttp
+        import socket
+
+        from src.health import HealthServer
+        from tests.fakes import build_stack
+
+        monkeypatch.setenv("WEB_ADMIN", "false")
+        stack = await build_stack()
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        server = HealthServer(port, host="127.0.0.1", bot=stack.bot)
+        assert await server.start() is True
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://127.0.0.1:{port}/health") as health_response:
+                    assert health_response.status == 200
+                async with session.get(f"http://127.0.0.1:{port}/admin", allow_redirects=False) as admin_response:
+                    assert admin_response.status == 404
+        finally:
+            await server.stop()
+
+    @pytest.mark.asyncio
     async def test_disabled_server_is_a_noop(self):
         from src.health import HealthServer
 

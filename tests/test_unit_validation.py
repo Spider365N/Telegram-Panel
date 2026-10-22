@@ -11,10 +11,10 @@ class TestInputValidator:
     def test_validate_phone_number_valid(self):
         """Test valid phone number formats"""
         valid_numbers = [
-            "+1234567890",
-            "+9876543210",
-            "+123456789012345",
-            "+12345678901234"
+            "+15550000004",
+            "+15550000008",
+            "+15550000009",
+            "+15550000010"
         ]
         for phone in valid_numbers:
             is_valid, error_msg = InputValidator.validate_phone_number(phone)
@@ -25,11 +25,11 @@ class TestInputValidator:
         """Test invalid phone number formats"""
         invalid_cases = [
             ("", "Phone number cannot be empty"),
-            ("1234567890", "Must start with +"),
+            ("15550000004", "Must start with +"),
             ("+123", "Too short"),
             ("+1234567890123456", "Too long"),
             ("+abc123456", "Contains non-digits"),
-            ("1234567890+", "Wrong format")
+            ("15550000004+", "Wrong format")
         ]
         for phone, expected_error in invalid_cases:
             is_valid, error_msg = InputValidator.validate_phone_number(phone)

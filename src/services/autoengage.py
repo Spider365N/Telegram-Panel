@@ -27,7 +27,7 @@ from html import escape as esc
 
 from src.services.channels import ChannelService, get_channel_service
 from src.services.engagement import looks_like_invite_problem as _looks_like_invite_problem
-from src.services.engagement import EngagementService, get_engagement_service
+from src.services.engagement import EngagementService, OperationResult, get_engagement_service
 from src.services.notify import get_notifier
 from src.services.orders import OrderService, get_order_service
 from src.services.settings import get_settings_service
@@ -46,6 +46,28 @@ def _short_error(text: str, limit: int = 160) -> str:
     if " " in cut:
         cut = cut[:cut.rfind(" ")]
     return cut + " …"
+
+
+def _safe_batch_error(errors) -> str:
+    """Summarise a batch failure without exposing account/session names."""
+    if not errors:
+        return "Telegram request failure"
+    text = " ".join(str(errors[0] or "").split())
+    lowered = text.lower()
+    if "no signed-in accounts" in lowered:
+        return "no signed-in accounts"
+    if "timed out" in lowered:
+        return "account timeout"
+    if _looks_like_invite_problem([text]):
+        return "channel access or invite failure"
+    # _run_batch formats errors as ``account-name: ErrorType: details``. Only
+    # keep the exception class; the account/session label and server details
+    # are not useful in an owner notification.
+    tail = text.split(": ", 1)[1] if ": " in text else text
+    category = tail.split(": ", 1)[0].strip()
+    if category and len(category) <= 48 and category.replace("_", "").isalnum():
+        return category
+    return "Telegram request failure"
 
 
 class AutoEngagement:
@@ -102,6 +124,41 @@ class AutoEngagement:
             self._orders = get_order_service()
         return self._orders
 
+    @staticmethod
+    def _channel_user_ids(channel: Dict[str, Any]) -> list[int]:
+        """Unique, valid users linked to a channel; never inspect unrelated users."""
+        values = [channel.get("owner_id"), channel.get("added_by")]
+        values.extend(channel.get("sponsors") or [])
+        ids: list[int] = []
+        for value in values:
+            try:
+                user_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if user_id > 0 and user_id not in ids:
+                ids.append(user_id)
+        return ids
+
+    async def _limits_for_channel(self, channel: Dict[str, Any]) -> list[Dict[str, Any]]:
+        """Plan limits of the owner, original adder, and explicit sponsors."""
+        limits = []
+        for user_id in self._channel_user_ids(channel):
+            try:
+                limits.append(await self.users.effective_limits(user_id))
+            except Exception as exc:  # noqa: BLE001 - automation uses safe defaults
+                logger.debug(f"channel limits lookup failed: {type(exc).__name__}")
+        return limits
+
+    @staticmethod
+    def _channel_limit(limits: list[Dict[str, Any]], key: str, default: int) -> int:
+        values = []
+        for limits_for_user in limits:
+            try:
+                values.append(int(limits_for_user.get(key) or 0))
+            except (TypeError, ValueError):
+                continue
+        return max(values, default=int(default))
+
     # ------------------------------------------------------------------
     async def accounts_for_post(self, channel: Dict[str, Any], kind: str = "reactions") -> int:
         """How many accounts to use for one post.
@@ -114,18 +171,12 @@ class AutoEngagement:
         Views (premium only):
             ``views_per_post`` capped by the pool.
         """
-        owner_id = channel.get("owner_id")
-        limits: Dict[str, Any] = {}
-        if owner_id:
-            try:
-                limits = await self.users.effective_limits(owner_id)
-            except Exception as exc:  # noqa: BLE001 - never break automation for this
-                logger.debug(f"limits lookup failed for {owner_id}: {exc}")
+        limits = await self._limits_for_channel(channel)
         pool = 0
         try:
             pool = await self.engagement.registry.available_count()
         except Exception as exc:
-            logger.debug(f"pool size unavailable: {exc}")
+            logger.debug(f"pool size unavailable: {type(exc).__name__}")
 
         if kind == "reactions":
             cfg = await self.settings.section("reactions")
@@ -134,7 +185,8 @@ class AutoEngagement:
             desired = int(bucket.get("accounts") or 0) or int(
                 auto_cfg.get("accounts_per_post", cfg.get("free_account_limit", 10))
             )
-            cap = int(limits.get("reaction_accounts") or cfg.get("free_account_limit", 10))
+            free_cap = int(cfg.get("free_account_limit", 10) or 10)
+            cap = self._channel_limit(limits, "reaction_accounts", free_cap) or free_cap
             upper = max(1, min(desired, cap, pool or desired))
             floor = int(auto_cfg.get("min_accounts", 8))
             lower = max(1, min(floor, upper))
@@ -145,7 +197,7 @@ class AutoEngagement:
         desired = int(bucket.get("views_per_post") or 0) or int(
             (cfg.get("auto") or {}).get("views_per_post", 100)
         )
-        cap = int(limits.get("auto_view_accounts") or desired)
+        cap = self._channel_limit(limits, "auto_view_accounts", desired) or desired
         return max(1, min(desired, cap, pool or desired))
 
     async def handle_new_post(
@@ -213,21 +265,15 @@ class AutoEngagement:
         showed a channel attributed to one id while the paying user had another,
         so the plan of the paying user has to be checked as well.
         """
-        candidates = []
-        for key in ("owner_id", "added_by"):
-            value = channel.get(key)
-            if value:
-                candidates.append(value)
-        for value in (channel.get("sponsors") or []):
-            candidates.append(value)
+        candidates = self._channel_user_ids(channel)
         for candidate in candidates:
             try:
-                if await self.users.has_feature(int(candidate), feature):
+                if await self.users.has_feature(candidate, feature):
                     return True
             except Exception as exc:  # noqa: BLE001 - never break automation
-                logger.debug(f"{feature} entitlement lookup failed for {candidate}: {exc}")
+                logger.debug(f"{feature} entitlement lookup failed: {type(exc).__name__}")
         if not candidates:
-            logger.debug(f"channel {channel.get('_id')} has no owner/sponsor to check {feature} for")
+            logger.debug(f"channel {channel.get('_id')} has no linked manager to check {feature} for")
         return False
 
     async def _views_entitled(self, channel: Dict[str, Any]) -> bool:
@@ -244,25 +290,27 @@ class AutoEngagement:
         label = {"views": "auto views", "comments": "auto comments"}.get(feature, feature)
         logger.info(
             f"{label} skipped for {channel.get('_id')} — no active {feature} plan for "
-            f"its owner/sponsors (the service stays enabled and starts as soon as a "
-            f"plan is granted)"
+            f"its linked owner/adder/sponsors (the service stays enabled)"
         )
-        owner_id = channel.get("owner_id") or channel.get("added_by")
         text = (
             f"🔒 <b>{label.title()} are a premium service</b>\n\n"
             f"📢 {channel.get('title') or channel.get('_id')}\n\n"
-            f"Nobody behind this channel has an active plan that covers "
-            f"<b>{feature}</b>, so nothing is being sent for now.\n"
-            "The service stays switched on — the moment a plan is granted it "
-            "starts working on the next post."
+            f"No user currently linked to this channel has an active plan that covers "
+            f"<b>{feature}</b>, so nothing is being sent for now. The setting stays on.\n\n"
+            "Check that the plan includes this service and that its recipient is linked "
+            "to this channel as owner, original adder, or sponsor. An operator can correct "
+            "the channel assignment in Admin Dashboard → Channels. Once both match, "
+            "automation will run on the next new post."
         )
         try:
-            if owner_id:
-                await self.notifier.to_user(int(owner_id), text)
+            recipients = self._channel_user_ids(channel)
+            if recipients:
+                for recipient in recipients:
+                    await self.notifier.to_user(recipient, text)
             else:
                 await self.notifier.to_admins(text)
         except Exception as exc:  # noqa: BLE001 - notice only
-            logger.debug(f"{feature} entitlement notice failed: {exc}")
+            logger.debug(f"{feature} entitlement notice failed: {type(exc).__name__}")
 
     async def _react(self, channel: Dict[str, Any], message_id: int, bucket: Dict[str, Any]) -> Dict[str, Any]:
         accounts = await self.accounts_for_post(channel, "reactions")
@@ -357,20 +405,15 @@ class AutoEngagement:
         if not texts:
             from src.services.settings import DEFAULT_POSITIVE_COMMENTS
             texts = list(DEFAULT_POSITIVE_COMMENTS)
-        limits = {}
-        owner_id = channel.get("owner_id") or channel.get("added_by")
-        if owner_id:
-            try:
-                limits = await self.users.effective_limits(int(owner_id))
-            except Exception as exc:  # noqa: BLE001 - fall back to the default
-                logger.debug(f"comment limits lookup failed: {exc}")
+        limits = await self._limits_for_channel(channel)
         pool = 0
         try:
             pool = await self.engagement.registry.available_count()
         except Exception:
             pool = 0
         desired = int(bucket.get("accounts") or auto_cfg.get("accounts_per_post", 3) or 3)
-        cap = int(limits.get("comment_accounts") or cfg.get("max_accounts", 10) or 10)
+        default_cap = int(cfg.get("max_accounts", 10) or 10)
+        cap = self._channel_limit(limits, "comment_accounts", default_cap) or default_cap
         accounts = max(1, min(desired, cap, pool or desired))
         username = channel.get("username") or None
         invite_link = channel.get("invite_link") or await self._ensure_invite(channel, username)
@@ -396,43 +439,97 @@ class AutoEngagement:
 
     async def _view(self, channel: Dict[str, Any], message_id: int, bucket: Dict[str, Any]) -> Dict[str, Any]:
         per_post = await self.accounts_for_post(channel, "views")
+        username = channel.get("username") or None
+        invite_link = channel.get("invite_link") or await self._ensure_invite(channel, username)
         try:
             result = await self.engagement.auto_views(
                 channel_id=channel["_id"], message_id=int(message_id),
-                views_per_post=per_post, invite_link=channel.get("invite_link"),
+                views_per_post=per_post, invite_link=invite_link, username=username,
             )
         except Exception as exc:
-            logger.error(f"Auto views failed for {channel['_id']}/{message_id}: {exc}")
-            return {"ok": 0, "failed": 1, "errors": [str(exc)[:120]]}
+            logger.error(
+                f"Auto views failed for {channel['_id']}/{message_id}: {type(exc).__name__}"
+            )
+            result = OperationResult(failed=1, errors=[type(exc).__name__])
+
+        # For private channels, a revoked/expired invite is recoverable. Export a
+        # fresh one and retry the post once, matching the reaction path.
+        if (result.ok == 0 and username is None
+                and _looks_like_invite_problem(result.errors)):
+            fresh = await self._ensure_invite(channel, None, force=True)
+            if fresh and fresh != invite_link:
+                logger.info(f"Retrying auto views on {channel['_id']}/{message_id} with a fresh invite")
+                try:
+                    result = await self.engagement.auto_views(
+                        channel_id=channel["_id"], message_id=int(message_id),
+                        views_per_post=per_post, invite_link=fresh, username=None,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        f"Auto views retry failed for {channel['_id']}/{message_id}: "
+                        f"{type(exc).__name__}"
+                    )
+                    result = OperationResult(failed=1, errors=[type(exc).__name__])
+
         await self.channels.bump_stat(channel["_id"], "views_sent", result.ok)
-        left = await self.channels.consume_auto_quota(channel["_id"], "views")
-        if left == 0:
+        previous_left = int(bucket.get("posts_left", 0) or 0)
+        left = previous_left
+        if result.ok > 0:
+            left = await self.channels.consume_auto_quota(channel["_id"], "views")
+        details = result.details or {}
+        requested = int(details.get("requested") or per_post)
+        used = int(details.get("accounts_used", per_post) or 0)
+        summary = (
+            f"Auto view requests on {channel['_id']}/{message_id}: "
+            f"{result.ok} accepted, {result.failed} failed of {used} accounts used "
+            f"({requested} requested)"
+        )
+        if result.ok:
+            logger.info(f"{summary} (posts left: {left})")
+        else:
+            logger.warning(
+                f"{summary} (reason: {_safe_batch_error(result.errors)})"
+            )
+            await self._notify_no_result(
+                channel, result, used, username, kind="views"
+            )
+        # A zero credit balance is the unlimited sentinel unless it just reached
+        # zero from a finite positive subscription. Failed delivery never spends
+        # a post credit.
+        if result.ok > 0 and previous_left > 0 and left == 0:
             await self._notify_exhausted(channel, "auto views")
-        return {"ok": result.ok, "failed": result.failed, "posts_left": left}
+        return {
+            "ok": result.ok, "failed": result.failed, "accounts": requested,
+            "accounts_used": used, "posts_left": left,
+        }
 
     async def _notify_no_result(self, channel: Dict[str, Any], result, accounts: int,
                                 username: Optional[str], kind: str = "reactions") -> None:
-        """Explain why a post got no reactions/comments (pool empty / not inside)."""
+        """Explain why a post got no reactions/views/comments (pool empty / access)."""
         if accounts <= 0:
             await self._notify_no_accounts(channel, kind)
             return
-        reason = (result.errors or [""])[0]
-        if "No signed-in accounts available" in reason:
+        errors = list(getattr(result, "errors", None) or [])
+        raw_reason = errors[0] if errors else ""
+        if "no signed-in accounts available" in str(raw_reason).lower():
             await self._notify_no_accounts(channel, kind)
             return
-        key = f"{channel['_id']}:join"
+        key = f"{channel['_id']}:{kind}:failure"
         import time
         last = self._no_account_notice.get(key, 0.0)
         if time.time() - last < 1800:
             return
         self._no_account_notice[key] = time.time()
-        label = {"reactions": "auto reactions", "comments": "auto comments"}.get(kind, kind)
+        label = {
+            "reactions": "auto reactions", "comments": "auto comments",
+            "views": "auto views",
+        }.get(kind, kind)
+        reason_text = _safe_batch_error(errors) if kind == "views" else str(raw_reason or "unknown")
         logger.warning(
             f"Auto {label} produced nothing on {channel['_id']} "
-            f"({len(result.errors)} error(s)): {reason[:120]}"
+            f"({len(errors)} error(s)): {reason_text[:80]}"
         )
-        reason_text = str(reason)
-        advice = self._advice_for(reason_text, username, channel)
+        advice = self._advice_for(reason_text, username, channel, kind=kind)
         text = (
             f"⚠️ <b>{label.capitalize()} could not be applied</b>\n\n"
             f"📢 {channel.get('title') or channel['_id']}\n"
@@ -443,9 +540,18 @@ class AutoEngagement:
         await self._send_owner(channel, text, "u:ch")
 
     @staticmethod
-    def _advice_for(reason: str, username: Optional[str], channel: Dict[str, Any]) -> str:
+    def _advice_for(reason: str, username: Optional[str], channel: Dict[str, Any],
+                    *, kind: str = "reactions") -> str:
         """What should the owner actually do about this failure?"""
         lowered = (reason or "").lower()
+        if kind == "views":
+            if "timeout" in lowered or "flood" in lowered:
+                return "Telegram slowed or timed out a view account. This post's view credit was preserved; the next post will retry."
+            if _looks_like_invite_problem([reason]):
+                if username:
+                    return "The accounts could not resolve this public channel. Check its username and that the post is still available."
+                return "The accounts could not access this private channel. Keep a valid invite link and grant the bot Invite Users permission so accounts can join."
+            return "Telegram refused the view request. Check that the post still exists, the channel is accessible to the accounts, and no account is restricted."
         if "invalid reaction" in lowered or "reactioninvalid" in lowered:
             return (
                 "The channel refused the emoji — Telegram only allows its own reaction "
@@ -479,14 +585,15 @@ class AutoEngagement:
             buttons = [[Button.inline("📋 My Channels", back)]]
         except Exception:  # pragma: no cover - defensive
             buttons = None
-        owner_id = channel.get("owner_id")
         try:
-            if owner_id:
-                await self.notifier.to_user(owner_id, text, buttons=buttons)
+            recipients = self._channel_user_ids(channel)
+            if recipients:
+                for recipient in recipients:
+                    await self.notifier.to_user(recipient, text, buttons=buttons)
             else:
                 await self.notifier.to_admins(text, buttons=buttons)
         except Exception as exc:
-            logger.debug(f"notification failed: {exc}")
+            logger.debug(f"notification failed: {type(exc).__name__}")
 
     async def warm_channel(self, channel_id: int, *, count: Optional[int] = None) -> Dict[str, Any]:
         """Join pool accounts into a private channel right after the bot is added.
@@ -537,19 +644,18 @@ class AutoEngagement:
     # pool lifecycle: new accounts join, removed bots leave
     # ------------------------------------------------------------------
     async def _reaction_cap(self, channel: Dict[str, Any]) -> int:
-        """How many accounts may join this channel (free cap or the owner's plan)."""
+        """How many accounts may join (free cap or the highest linked plan)."""
         try:
             cfg = await self.settings.section("reactions")
         except Exception:
             cfg = {}
-        cap = int(cfg.get("free_account_limit", 10) or 10)
-        owner_id = channel.get("owner_id")
-        if owner_id:
-            try:
-                limits = await self.users.effective_limits(int(owner_id))
-                cap = int(limits.get("reaction_accounts") or cap)
-            except Exception as exc:  # noqa: BLE001 - fall back to the free cap
-                logger.debug(f"reaction cap lookup failed for {owner_id}: {exc}")
+        free_cap = int(cfg.get("free_account_limit", 10) or 10)
+        try:
+            limits = await self._limits_for_channel(channel)
+            cap = self._channel_limit(limits, "reaction_accounts", free_cap) or free_cap
+        except Exception as exc:  # noqa: BLE001 - fall back to the free cap
+            logger.debug(f"reaction cap lookup failed: {type(exc).__name__}")
+            cap = free_cap
         pool = 0
         try:
             pool = await self.engagement.registry.available_count()
@@ -681,38 +787,45 @@ class AutoEngagement:
             f"Automation for {channel['_id']} ran with an empty account pool "
             f"({kind}) — nobody is signed in yet"
         )
+        label = {
+            "reactions": "auto reactions", "comments": "auto comments",
+            "views": "auto views",
+        }.get(kind, kind)
         text = (
-            "⚠️ <b>Auto reactions could not run</b>\n\n"
+            f"⚠️ <b>{label.capitalize()} could not run</b>\n\n"
             f"📢 {channel.get('title') or channel['_id']}\n\n"
-            "No accounts are signed in yet, so there is nothing to react with.\n"
-            "Add accounts from the panel (Account Management) — reactions then "
-            "start on the next post automatically."
+            "No accounts are signed in or available right now, so nothing was sent.\n"
+            "Add or restore accounts from the panel (Account Management) — "
+            f"{label} can then run on the next new post."
         )
         try:
             buttons = [[Button.inline("👤 Account Info", "u:ai")]]
         except Exception:  # pragma: no cover - defensive
             buttons = None
-        owner_id = channel.get("owner_id")
         try:
-            if owner_id:
-                await self.notifier.to_user(owner_id, text, buttons=buttons)
+            recipients = self._channel_user_ids(channel)
+            if recipients:
+                for recipient in recipients:
+                    await self.notifier.to_user(recipient, text, buttons=buttons)
             else:
                 await self.notifier.to_admins(text, buttons=buttons)
         except Exception as exc:
-            logger.debug(f"No-accounts notice failed: {exc}")
+            logger.debug(f"No-accounts notice failed: {type(exc).__name__}")
 
     async def _notify_exhausted(self, channel: Dict[str, Any], what: str) -> None:
-        owner_id = channel.get("owner_id")
-        if not owner_id:
+        recipients = self._channel_user_ids(channel)
+        if not recipients:
             return
         try:
-            await get_notifier().to_user(
-                owner_id,
-                f"⏳ Your {what} plan has run out for <b>{channel.get('title', channel['_id'])}</b>.\n\n"
-                f"Buy a new plan from the panel to keep reactions coming automatically.",
+            text = (
+                f"⏳ Your {what} plan has run out for "
+                f"<b>{channel.get('title', channel['_id'])}</b>.\n\n"
+                "Renew it from the panel to continue automatic service."
             )
+            for recipient in recipients:
+                await self.notifier.to_user(recipient, text)
         except Exception as exc:
-            logger.debug(f"exhausted notification failed: {exc}")
+            logger.debug(f"exhausted notification failed: {type(exc).__name__}")
 
     async def enable_free_plan(self, channel_id: int) -> Dict[str, Any]:
         """Start automation after the bot is added to a channel/group.
@@ -750,32 +863,29 @@ class AutoEngagement:
                     f"(slots {slots.get('used')}/{slots.get('total')})"
                 )
                 await self._notify_channel_limit(channel, owner_id, slots)
-        owner_id = channel.get("owner_id")
-        if owner_id:
-            try:
-                views_cfg = await self.settings.section("views")
-                entitled = (await self._entitled(channel, "views")
-                            and (views_cfg.get("auto") or {}).get("enabled", True))
-                if entitled:
-                    await self.channels.set_auto_views(channel_id, True, posts_left=-1)
-                    outcome["views"] = "on (premium)"
-                else:
-                    # Nothing to switch off any more: a plan can be granted at any
-                    # moment and the service must start on the next post without
-                    # the owner having to toggle it again.
-                    outcome["views"] = "premium only"
-            except Exception as exc:  # noqa: BLE001
-                logger.debug(f"auto-view switch failed for {channel_id}: {exc}")
-            try:
-                comments_cfg = await self.settings.section("comments")
-                if ((comments_cfg.get("auto") or {}).get("enabled", True)
-                        and await self._entitled(channel, "comments")):
-                    await self.channels.set_auto_comments(channel_id, True)
-                    outcome["comments"] = "on (premium)"
-                elif (channel.get("auto_comments") or {}).get("enabled"):
-                    outcome["comments"] = "premium only"
-            except Exception as exc:  # noqa: BLE001
-                logger.debug(f"auto-comment switch failed for {channel_id}: {exc}")
+        try:
+            views_cfg = await self.settings.section("views")
+            entitled = (await self._entitled(channel, "views")
+                        and (views_cfg.get("auto") or {}).get("enabled", True))
+            if entitled:
+                await self.channels.set_auto_views(channel_id, True, posts_left=-1)
+                outcome["views"] = "on (premium)"
+            else:
+                # Nothing to switch off: a linked plan can be granted later and
+                # the service starts on the next post once that user is matched.
+                outcome["views"] = "premium only"
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"auto-view switch failed for {channel_id}: {type(exc).__name__}")
+        try:
+            comments_cfg = await self.settings.section("comments")
+            if ((comments_cfg.get("auto") or {}).get("enabled", True)
+                    and await self._entitled(channel, "comments")):
+                await self.channels.set_auto_comments(channel_id, True)
+                outcome["comments"] = "on (premium)"
+            elif (channel.get("auto_comments") or {}).get("enabled"):
+                outcome["comments"] = "premium only"
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"auto-comment switch failed for {channel_id}: {type(exc).__name__}")
         # Private channel? get the accounts inside now so post #1 is covered.
         try:
             outcome["warmup"] = await self.warm_channel(channel_id)
@@ -827,9 +937,7 @@ class AutoEngagement:
         views_cfg = await self.settings.section("views")
         comments_cfg = await self.settings.section("comments")
         for channel in channels:
-            members = {channel.get("owner_id"), channel.get("added_by"), *(channel.get("sponsors") or [])}
-            members.discard(None)
-            if user_id not in {int(m) for m in members if str(m).lstrip("-").isdigit()}:
+            if user_id not in self._channel_user_ids(channel):
                 continue
             outcome["channels"] += 1
             try:
@@ -847,8 +955,13 @@ class AutoEngagement:
                 logger.debug(f"plan hook failed for {channel.get('_id')}: {exc}")
         if outcome["channels"]:
             logger.info(
-                f"Plan hook for {user_id}: {outcome['views']} channel(s) with auto views, "
+                f"Plan hook: {outcome['views']} linked channel(s) with auto views, "
                 f"{outcome['comments']} with auto comments"
+            )
+        else:
+            logger.info(
+                "Plan hook: no channel is linked to this plan holder; automation settings "
+                "were not changed. Check the owner/adder/sponsor assignment."
             )
         return outcome
 

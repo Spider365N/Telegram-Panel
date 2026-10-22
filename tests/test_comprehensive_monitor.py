@@ -61,6 +61,16 @@ class TestResolveChannelId:
             await monitor.resolve_channel_id()
             
             assert monitor.channel_id is None
+
+    async def test_missing_channel_warning_is_logged_only_once(self, mock_tbot, caplog):
+        """Many active clients must not spam the same optional-config warning."""
+        monitor = Monitor(mock_tbot)
+        caplog.set_level("WARNING", logger="src.monitor")
+        with patch('src.monitor.CHANNEL_ID', None):
+            await monitor.resolve_channel_id()
+            await monitor.resolve_channel_id()
+        warnings = [record for record in caplog.records if "CHANNEL_ID is not configured" in record.getMessage()]
+        assert len(warnings) == 1
     
     async def test_resolve_already_resolved(self, mock_tbot):
         """Test when channel ID is already resolved"""

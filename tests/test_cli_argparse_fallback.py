@@ -30,7 +30,7 @@ class FakeManager:
 
 CASES = [
     (['list-accounts'], 'list_accounts'),
-    (['add-account', '+989121234567'], 'add_account'),
+    (['add-account', '+15550000006'], 'add_account'),
     (['remove-account', 's1'], 'remove_account'),
     (['individual', 'reaction', 's1', 'L', '\U0001f44d'], 'reaction'),
     (['individual', 'join', 's1', 'L'], 'join_chat'),

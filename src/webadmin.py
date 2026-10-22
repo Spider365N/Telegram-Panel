@@ -425,8 +425,8 @@ const R = {
       ["plan_tag", "Plan"], ["expires", "Valid till"], ["ban_tag", "Status"], ["actions", "Actions"],
     ], {scroll: true, tall: true})}</div>`,
   channels: (d) => `<div class="card"><h2>Channels <small>${d.channels.length}</small></h2>
-    <p class="hint">Locked = the user may only disable automation; only an operator can delete
-    or re-assign it.</p>
+    <p class="hint">Locked = the user may only disable automation. Use <b>owner</b> to transfer
+    channel ownership, or <b>sponsor</b> to link a plan holder without changing the owner.</p>
     ${table(d.channels.map((c) => {
       const on = (bucket) => bucket && bucket.enabled;
       return {
@@ -443,6 +443,7 @@ const R = {
         actions: html(`<div class="actions">
           <button class="b sm p" data-act="chan_owner" data-id="${esc(c._id)}"
             data-on="${esc(c.owner_id || "")}">owner</button>
+          <button class="b sm" data-act="chan_sponsor" data-id="${esc(c._id)}">sponsor</button>
           <button class="b sm d" data-act="chan_del" data-id="${esc(c._id)}">delete</button></div>`),
       };
     }), [
@@ -716,7 +717,9 @@ function wire(root = document) {
           await api(`requests/${id}/reject`, {method: "POST", body: {reason: reason || ""}}); toast("Rejected"); }
         if (act === "chan_lock") { await api(`channels/${id}/lock`, {method: "POST", body: {locked: el.dataset.on !== "1"}}); toast("Lock updated"); }
         if (act === "chan_owner") { const owner = prompt("New owner user id:", el.dataset.on || ""); if (!owner) return;
-          await api(`channels/${id}/owner`, {method: "POST", body: {owner_id: Number(owner)}}); toast("Owner set"); }
+          await api(`channels/${id}/owner`, {method: "POST", body: {owner_id: Number(owner)}}); toast("Owner set; automation refreshed"); }
+        if (act === "chan_sponsor") { const user = prompt("Link plan holder user id as channel sponsor (owner is unchanged):"); if (!user) return;
+          await api(`channels/${id}/sponsor`, {method: "POST", body: {user_id: Number(user)}}); toast("Plan holder linked; automation refreshed"); }
         if (act === "chan_del") { if (!confirm("Delete this channel record?")) return;
           await api(`channels/${id}`, {method: "DELETE"}); toast("Channel deleted"); }
         if (act === "chan_auto") { await api(`channels/${id}/auto`, {method: "POST", body: {kind: el.dataset.extra, enabled: el.dataset.on !== "1"}}); toast("Automation updated"); }
@@ -953,6 +956,7 @@ class WebAdmin:
         app.router.add_post("/admin/api/requests/{request_id}/reject", self.api_reject_request)
         app.router.add_post("/admin/api/channels/{channel_id}/lock", self.api_channel_lock)
         app.router.add_post("/admin/api/channels/{channel_id}/owner", self.api_channel_owner)
+        app.router.add_post("/admin/api/channels/{channel_id}/sponsor", self.api_channel_sponsor)
         app.router.add_post("/admin/api/channels/{channel_id}/auto", self.api_channel_auto)
         app.router.add_delete("/admin/api/channels/{channel_id}", self.api_channel_delete)
         app.router.add_post("/admin/api/orders/{order_id}/cancel", self.api_order_cancel)
@@ -1006,6 +1010,9 @@ class WebAdmin:
             return self._err("unauthorized", 401)
         try:
             payload = await handler(request, operator)
+            from aiohttp import web
+            if isinstance(payload, web.StreamResponse):
+                return payload
             return self._ok(payload or {})
         except Exception as exc:  # noqa: BLE001 - the UI shows the message
             logger.error(f"web admin API {request.path} failed: {exc}", exc_info=True)
@@ -1082,7 +1089,7 @@ async function logout(){{ await fetch("/admin/api/logout", {{method:"POST", cred
             raise web.HTTPFound("/admin/login?e=That+user+id+is+not+an+owner%2Fadmin")
         role = "owner" if await self._services()["users"].is_owner(user_id) else "admin"
         token = self._session(user_id, role)
-        response = web.HTTPFound("/admin")
+        response = web.Response(status=302, headers={"Location": "/admin"})
         response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="Lax",
                             max_age=SESSION_TTL, path="/")
         logger.info(f"Web admin login: {user_id} ({role})")
@@ -1451,9 +1458,35 @@ async function logout(){{ await fetch("/admin/api/logout", {{method:"POST", cred
             owner_id = int(data.get("owner_id") or 0)
             if not owner_id:
                 return self._err("owner_id is required")
-            doc = await self._services()["channels"].set_owner(channel_id, owner_id,
-                                                              source="web admin")
-            return {"channel": doc}
+            channels = self._services()["channels"]
+            doc = await channels.set_owner(channel_id, owner_id, source="web admin")
+            # Re-evaluate automation immediately: if this recipient already has
+            # a views/comments plan, do not make the operator wait for another
+            # grant or toggle before the next post can use it.
+            from src.services.autoengage import get_auto_engagement
+            automation = await get_auto_engagement().refresh_automation_for_user(owner_id)
+            return {"channel": doc, "automation": automation}
+
+        return await self._json_api(request, handler)
+
+    async def api_channel_sponsor(self, request):
+        async def handler(req, op):
+            channel_id = int(req.match_info["channel_id"])
+            data = await self._body(req)
+            user_id = int(data.get("user_id") or 0)
+            if user_id <= 0:
+                return self._err("a positive user_id is required")
+            users = self._services()["users"]
+            if await users.get_user(user_id) is None:
+                return self._err("user not found", 404)
+            channels = self._services()["channels"]
+            channel = await channels.get(channel_id)
+            if channel is None:
+                return self._err("channel not found", 404)
+            channel = await channels.add_sponsor(channel_id, user_id)
+            from src.services.autoengage import get_auto_engagement
+            automation = await get_auto_engagement().refresh_automation_for_user(user_id)
+            return {"channel": channel, "automation": automation}
 
         return await self._json_api(request, handler)
 

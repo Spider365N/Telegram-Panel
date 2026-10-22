@@ -50,8 +50,8 @@ class TestSanitizeSessionName:
             "test-session",
             "test_session_123",
             "a" * 255,  # Max length
-            "1234567890",
-            "+1234567890"
+            "15550000004",
+            "+15550000004"
         ]
         for name in valid_names:
             result = sanitize_session_name(name)
@@ -148,7 +148,7 @@ class TestGetSafeSessionFilePath:
     
     def test_valid_paths(self):
         """Test valid session file paths"""
-        valid_names = ["test_session", "session123", "+1234567890"]
+        valid_names = ["test_session", "session123", "+15550000004"]
         for name in valid_names:
             result = get_safe_session_file_path(name)
             assert result.endswith(".session")
@@ -477,7 +477,7 @@ class TestGetBotUserId:
     
     def test_valid_bot_token(self):
         """Test valid bot token"""
-        token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+        token = "123456789:fake"
         result = get_bot_user_id(token)
         assert result == 123456789
     
@@ -502,7 +502,7 @@ class TestIsBotMessage:
         """Test bot message detection"""
         mock_event = Mock()
         mock_event.sender_id = 123456789
-        bot_token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+        bot_token = "123456789:fake"
         result = is_bot_message(mock_event, bot_token)
         assert result is True
     
@@ -510,7 +510,7 @@ class TestIsBotMessage:
         """Test non-bot message"""
         mock_event = Mock()
         mock_event.sender_id = 999999999
-        bot_token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+        bot_token = "123456789:fake"
         result = is_bot_message(mock_event, bot_token)
         assert result is False
     
